@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #f8f9fa;
+  --surface: #ffffff;
+  --foreground: #2c3e50;
+  --muted-foreground: #6b7785;
+  --border: #e5e8eb;
+
+  --mint: #5bc5a7;
+  --mint-foreground: #0b3b30;
+  --coral: #ff6b6b;
+  --coral-foreground: #3a0d0d;
+  --teal: #4ecdc4;
+  --success: #27ae60;
+}
+
+.dark {
+  --background: #131c24;
+  --surface: #1c2733;
+  --foreground: #ecf0f3;
+  --muted-foreground: #9aa5b1;
+  --border: #2a3744;
+
+  --mint: #7ed9c0;
+  --mint-foreground: #0b3b30;
+  --coral: #ff8a8a;
+  --coral-foreground: #3a0d0d;
+  --teal: #6fe0d6;
+  --success: #3fc97a;
+}
+
+@theme inline {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Roboto", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Roboto Mono", ui-monospace, monospace;
+
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+
+  --color-mint: var(--mint);
+  --color-mint-foreground: var(--mint-foreground);
+  --color-coral: var(--coral);
+  --color-coral-foreground: var(--coral-foreground);
+  --color-teal: var(--teal);
+  --color-success: var(--success);
+
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  button,
+  .font-ui {
+    font-family: var(--font-sans);
+  }
+  .tabular-currency {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
