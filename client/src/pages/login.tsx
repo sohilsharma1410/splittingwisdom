@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Scale, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,9 @@ import type { AuthUser } from "@/hooks/use-auth";
 
 export default function Login() {
   const [, navigate] = useLocation();
+  const search = useSearch();
+  const nextPath = new URLSearchParams(search).get("next");
+  const redirectTo = nextPath?.startsWith("/") ? nextPath : "/";
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [email, setEmail] = useState("");
@@ -26,7 +29,7 @@ export default function Login() {
     onSuccess: (data) => {
       queryClient.setQueryData(["auth", "me"], data);
       toast({ title: "Welcome back", variant: "success" });
-      navigate("/");
+      navigate(redirectTo);
     },
     onError: (err) => {
       setFormError(
@@ -89,7 +92,10 @@ export default function Login() {
 
         <p className="text-center text-sm text-muted-foreground">
           New here?{" "}
-          <Link href="/register" className="text-mint hover:underline">
+          <Link
+            href={nextPath ? `/register?next=${encodeURIComponent(nextPath)}` : "/register"}
+            className="text-mint hover:underline"
+          >
             Create an account
           </Link>
         </p>
