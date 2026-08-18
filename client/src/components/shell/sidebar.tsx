@@ -5,12 +5,20 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
 export function Sidebar({ onNewBill }: { onNewBill: () => void }) {
   const [collapsed, setCollapsed] = useState(false);
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const { user, logout } = useAuth();
+  const { toast } = useToast();
+
+  const handleLogout = async () => {
+    await logout();
+    toast({ title: "Logged out", variant: "default" });
+    navigate("/login");
+  };
 
   return (
     <aside
@@ -85,7 +93,7 @@ export function Sidebar({ onNewBill }: { onNewBill: () => void }) {
                   {user.displayName}
                 </p>
                 <button
-                  onClick={logout}
+                  onClick={handleLogout}
                   className="text-xs text-muted-foreground hover:text-coral"
                 >
                   Log out

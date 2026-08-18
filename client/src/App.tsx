@@ -1,5 +1,6 @@
 import { Switch, Route } from "wouter";
 import { AppShell } from "@/components/shell/app-shell";
+import { ProtectedRoute } from "@/components/protected-route";
 import Dashboard from "@/pages/dashboard";
 import Groups from "@/pages/groups";
 import GroupDetail from "@/pages/group-detail";
@@ -20,39 +21,53 @@ export default function App() {
       <Route path="/join/:token" component={JoinGroup} />
 
       <Route path="/">
-        <AppShell>
-          <Dashboard />
-        </AppShell>
+        <ProtectedRoute>
+          <AppShell>
+            <Dashboard />
+          </AppShell>
+        </ProtectedRoute>
       </Route>
       <Route path="/groups">
-        <AppShell>
-          <Groups />
-        </AppShell>
+        <ProtectedRoute>
+          <AppShell>
+            <Groups />
+          </AppShell>
+        </ProtectedRoute>
       </Route>
       <Route path="/group/:id">
-        <AppShell>
-          <GroupDetail />
-        </AppShell>
+        <ProtectedRoute>
+          <AppShell>
+            <GroupDetail />
+          </AppShell>
+        </ProtectedRoute>
       </Route>
       <Route path="/activity">
-        <AppShell>
-          <Activity />
-        </AppShell>
+        <ProtectedRoute>
+          <AppShell>
+            <Activity />
+          </AppShell>
+        </ProtectedRoute>
       </Route>
       <Route path="/balances">
-        <AppShell>
-          <Balances />
-        </AppShell>
+        <ProtectedRoute>
+          <AppShell>
+            <Balances />
+          </AppShell>
+        </ProtectedRoute>
       </Route>
       <Route path="/balance/:id">
-        <AppShell>
-          <BalanceDetail />
-        </AppShell>
+        <ProtectedRoute>
+          <AppShell>
+            <BalanceDetail />
+          </AppShell>
+        </ProtectedRoute>
       </Route>
       <Route path="/bill/:id">
-        <AppShell>
-          <BillDetail />
-        </AppShell>
+        <ProtectedRoute>
+          <AppShell>
+            <BillDetail />
+          </AppShell>
+        </ProtectedRoute>
       </Route>
 
       <Route component={NotFound} />
