@@ -11,8 +11,6 @@ export function MobileNav({ onNewBill }: { onNewBill: () => void }) {
     <>
       <Button
         onClick={onNewBill}
-        disabled
-        title="Bill creation arrives in a later checkpoint"
         size="fab"
         className="fixed bottom-20 right-4 z-40 md:hidden"
         aria-label="New bill"

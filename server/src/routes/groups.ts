@@ -8,6 +8,7 @@ import {
   groups,
   groupMembers,
   users,
+  bills,
 } from "@splittingwisdom/shared";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -155,6 +156,32 @@ router.get("/:id", requireGroupMember("id"), async (req, res) => {
           balance: 0,
         })),
       },
+    },
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/groups/:id/bills — bills for this group, newest first
+// ---------------------------------------------------------------------------
+router.get("/:id/bills", requireGroupMember("id"), async (req, res) => {
+  const groupBills = await db.query.bills.findMany({
+    where: eq(bills.groupId, res.locals.groupId!),
+    with: { paidBy: true },
+    orderBy: (b, { desc }) => [desc(b.createdAt)],
+  });
+
+  res.json({
+    data: {
+      bills: groupBills.map((b) => ({
+        id: b.id,
+        description: b.description,
+        merchant: b.merchant,
+        billDate: b.billDate,
+        grandTotal: b.subtotalAmount + b.taxAmount + b.tipAmount + b.serviceFeeAmount - b.discountAmount,
+        paidByName: b.paidBy.displayName,
+        status: b.status,
+        createdAt: b.createdAt,
+      })),
     },
   });
 });

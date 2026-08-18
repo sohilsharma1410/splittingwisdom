@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useParams } from "wouter";
-import { MoreVertical, Pencil, Trash2, X, Receipt } from "lucide-react";
+import { MoreVertical, Pencil, Trash2, X, Receipt, Plus } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -16,7 +17,10 @@ import { AddMemberForm } from "@/components/groups/add-member-form";
 import { RenameGroupDialog } from "@/components/groups/rename-group-dialog";
 import { DeleteGroupAlert } from "@/components/groups/delete-group-alert";
 import { RemoveMemberAlert } from "@/components/groups/remove-member-alert";
+import { BillFormDialog } from "@/components/bills/bill-form-dialog";
+import { BillCard } from "@/components/bills/bill-card";
 import { useGroup, type GroupMemberDetail } from "@/hooks/use-groups";
+import { useGroupBills } from "@/hooks/use-bills";
 import { useAuth } from "@/hooks/use-auth";
 import { formatPaise } from "@splittingwisdom/shared";
 
@@ -25,9 +29,11 @@ export default function GroupDetail() {
   const groupId = Number(id);
   const { user } = useAuth();
   const { data, isLoading, isError, refetch } = useGroup(groupId);
+  const { data: billsData, isLoading: billsLoading } = useGroupBills(groupId);
 
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [newBillOpen, setNewBillOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<GroupMemberDetail | null>(null);
 
   if (isLoading) {
@@ -52,7 +58,8 @@ export default function GroupDetail() {
         <div>
           <h1 className="text-3xl font-semibold">{group.name}</h1>
           <p className="mt-1 text-muted-foreground">
-            {group.members.length} member{group.members.length === 1 ? "" : "s"} · 0 bills
+            {group.members.length} member{group.members.length === 1 ? "" : "s"} ·{" "}
+            {billsData?.bills.length ?? 0} bill{billsData?.bills.length === 1 ? "" : "s"}
           </p>
         </div>
         <DropdownMenu>
@@ -122,13 +129,40 @@ export default function GroupDetail() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Bills</h2>
-        <EmptyState
-          icon={Receipt}
-          heading="No bills yet"
-          description="Bills for this group will show up here once manual bill entry arrives in Checkpoint D."
-        />
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Bills</h2>
+          <Button size="sm" variant="outline" onClick={() => setNewBillOpen(true)}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Add Bill
+          </Button>
+        </div>
+
+        {billsLoading && (
+          <div className="space-y-2">
+            <Skeleton className="h-16" />
+            <Skeleton className="h-16" />
+          </div>
+        )}
+
+        {!billsLoading && billsData && billsData.bills.length === 0 && (
+          <EmptyState
+            icon={Receipt}
+            heading="No bills yet"
+            description="Add a bill and split it equally among the people involved."
+            action={<Button onClick={() => setNewBillOpen(true)}>Add Bill</Button>}
+          />
+        )}
+
+        {!billsLoading && billsData && billsData.bills.length > 0 && (
+          <div className="space-y-2">
+            {billsData.bills.map((bill) => (
+              <BillCard key={bill.id} bill={bill} />
+            ))}
+          </div>
+        )}
       </section>
+
+      <BillFormDialog open={newBillOpen} onOpenChange={setNewBillOpen} lockedGroupId={group.id} />
 
       <RenameGroupDialog
         groupId={group.id}

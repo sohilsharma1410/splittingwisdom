@@ -44,12 +44,7 @@ export function Sidebar({ onNewBill }: { onNewBill: () => void }) {
       </div>
 
       <div className="px-3">
-        <Button
-          className="w-full"
-          onClick={onNewBill}
-          disabled
-          title="Bill creation arrives in a later checkpoint"
-        >
+        <Button className="w-full" onClick={onNewBill}>
           <Plus className="h-4 w-4" aria-hidden="true" />
           {!collapsed && "New Bill"}
         </Button>

@@ -13,6 +13,12 @@ declare global {
   }
 }
 
+export async function getMembership(userId: number, groupId: number) {
+  return db.query.groupMembers.findFirst({
+    where: and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)),
+  });
+}
+
 /**
  * Loads the group from req.params.id / req.params.groupId, confirms the
  * current user is a member, and stashes both on res.locals. Returns 404
@@ -35,12 +41,7 @@ export function requireGroupMember(paramName: "id" | "groupId" = "id") {
       return;
     }
 
-    const membership = await db.query.groupMembers.findFirst({
-      where: and(
-        eq(groupMembers.groupId, groupId),
-        eq(groupMembers.userId, req.session.userId!),
-      ),
-    });
+    const membership = await getMembership(req.session.userId!, groupId);
     if (!membership) {
       res.status(404).json({ error: { message: "Group not found." } });
       return;
