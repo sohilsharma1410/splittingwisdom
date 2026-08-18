@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
+import { parseDateOnly } from "@/lib/date";
 import { CalendarIcon, ChevronDown, Loader2 } from "lucide-react";
 import {
   Dialog,
@@ -96,8 +97,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
     if (!open || !editBill) return;
     setDescription(editBill.description);
     setMerchant(editBill.merchant ?? "");
-    const [y, m, d] = editBill.billDate.split("-").map(Number);
-    setBillDate(new Date(y, m - 1, d));
+    setBillDate(parseDateOnly(editBill.billDate));
     setTotalAmount(paiseToRupeeInput(editBill.subtotalAmount));
     setTaxAmount(editBill.taxAmount ? paiseToRupeeInput(editBill.taxAmount) : "");
     setTipAmount(editBill.tipAmount ? paiseToRupeeInput(editBill.tipAmount) : "");

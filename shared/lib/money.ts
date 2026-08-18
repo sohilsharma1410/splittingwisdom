@@ -16,6 +16,19 @@ export function formatPaise(paise: number): string {
   return RUPEE_FORMATTER.format(paise / 100);
 }
 
+/** subtotal + tax + tip + serviceFee − discount. Always derived, never stored. */
+export function billGrandTotal(bill: {
+  subtotalAmount: number;
+  taxAmount: number;
+  tipAmount: number;
+  serviceFeeAmount: number;
+  discountAmount: number;
+}): number {
+  return (
+    bill.subtotalAmount + bill.taxAmount + bill.tipAmount + bill.serviceFeeAmount - bill.discountAmount
+  );
+}
+
 /** Parses a rupee-denominated input string (e.g. "1234.5", "1234") into integer paise. */
 export function rupeesToPaise(input: string): number {
   const trimmed = input.trim();

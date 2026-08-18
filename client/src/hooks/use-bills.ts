@@ -62,6 +62,29 @@ export interface CreateBillInput {
   splitMemberIds: number[];
 }
 
+export interface ActivityBillItem {
+  id: number;
+  groupId: number;
+  groupName: string;
+  description: string;
+  merchant: string | null;
+  billDate: string;
+  grandTotal: number;
+  itemCount: number;
+  paidByName: string;
+  status: "pending" | "settled";
+  myShare: number;
+  createdAt: string;
+  breakdown: { memberId: number; displayName: string; total: number }[];
+}
+
+export function useActivity() {
+  return useQuery({
+    queryKey: ["activity"],
+    queryFn: () => apiFetch<{ bills: ActivityBillItem[] }>("/api/bills"),
+  });
+}
+
 export function useGroupBills(groupId: number) {
   return useQuery({
     queryKey: ["groups", groupId, "bills"],

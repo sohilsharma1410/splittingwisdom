@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { format } from "date-fns";
 import { CheckCircle2, Clock } from "lucide-react";
 import { formatPaise } from "@splittingwisdom/shared";
+import { parseDateOnly } from "@/lib/date";
 import type { GroupBillSummary } from "@/hooks/use-bills";
 
 export function BillCard({ bill }: { bill: GroupBillSummary }) {
@@ -13,7 +14,7 @@ export function BillCard({ bill }: { bill: GroupBillSummary }) {
       <div className="min-w-0">
         <p className="truncate font-medium">{bill.description}</p>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          {format(new Date(bill.billDate), "d MMM yyyy")} · Paid by {bill.paidByName}
+          {format(parseDateOnly(bill.billDate), "d MMM yyyy")} · Paid by {bill.paidByName}
           {bill.merchant && ` · ${bill.merchant}`}
         </p>
       </div>

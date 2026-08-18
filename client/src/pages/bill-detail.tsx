@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "wouter";
 import { format } from "date-fns";
+import { parseDateOnly } from "@/lib/date";
 import { Pencil, Trash2, ChevronDown, Receipt } from "lucide-react";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -33,8 +34,7 @@ export default function BillDetail() {
 
   const { bill } = data;
   const nMembers = bill.breakdown.length;
-  const [billYear, billMonth, billDay] = bill.billDate.split("-").map(Number);
-  const billDateLocal = new Date(billYear, billMonth - 1, billDay);
+  const billDateLocal = parseDateOnly(bill.billDate);
 
   return (
     <div className="space-y-6">

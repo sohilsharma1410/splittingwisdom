@@ -10,6 +10,7 @@ import {
   users,
   splitEqually,
   allocateProportionally,
+  billGrandTotal,
 } from "@splittingwisdom/shared";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -55,6 +56,62 @@ function computeShareBreakdown(bill: {
       discountShares.get(id)!,
   }));
 }
+
+// ---------------------------------------------------------------------------
+// GET /api/bills — every bill across every group the current user is in,
+// newest first. Powers the Activity page and the Dashboard's recent list.
+// ---------------------------------------------------------------------------
+router.get("/", async (req, res) => {
+  const myMemberships = await db.query.groupMembers.findMany({
+    where: eq(groupMembers.userId, req.session.userId!),
+  });
+  if (myMemberships.length === 0) {
+    res.json({ data: { bills: [] } });
+    return;
+  }
+  const myMemberIdByGroup = new Map(myMemberships.map((m) => [m.groupId, m.id]));
+
+  const allBills = await db.query.bills.findMany({
+    where: (b, { inArray }) => inArray(b.groupId, myMemberships.map((m) => m.groupId)),
+    with: {
+      group: { columns: { name: true } },
+      paidBy: true,
+      items: { with: { assignments: { with: { member: true } } } },
+    },
+    orderBy: (b, { desc }) => [desc(b.createdAt)],
+  });
+
+  const result = allBills.map((bill) => {
+    const item = bill.items[0];
+    const memberIds = item?.assignments.map((a) => a.memberId) ?? [];
+    const breakdown = memberIds.length > 0 ? computeShareBreakdown(bill, memberIds) : [];
+    const memberNames = new Map((item?.assignments ?? []).map((a) => [a.memberId, a.member.displayName]));
+    const myMemberId = myMemberIdByGroup.get(bill.groupId);
+    const myShare = breakdown.find((b) => b.memberId === myMemberId)?.total ?? 0;
+
+    return {
+      id: bill.id,
+      groupId: bill.groupId,
+      groupName: bill.group.name,
+      description: bill.description,
+      merchant: bill.merchant,
+      billDate: bill.billDate,
+      grandTotal: billGrandTotal(bill),
+      itemCount: bill.items.length,
+      paidByName: bill.paidBy.displayName,
+      status: bill.status,
+      myShare,
+      createdAt: bill.createdAt,
+      breakdown: breakdown.map((b) => ({
+        memberId: b.memberId,
+        displayName: memberNames.get(b.memberId),
+        total: b.total,
+      })),
+    };
+  });
+
+  res.json({ data: { bills: result } });
+});
 
 router.post("/", async (req, res) => {
   const parsed = createBillSchema.safeParse(req.body);
@@ -170,8 +227,7 @@ router.get("/:id", async (req, res) => {
         tipAmount: bill.tipAmount,
         serviceFeeAmount: bill.serviceFeeAmount,
         discountAmount: bill.discountAmount,
-        grandTotal:
-          bill.subtotalAmount + bill.taxAmount + bill.tipAmount + bill.serviceFeeAmount - bill.discountAmount,
+        grandTotal: billGrandTotal(bill),
         paidByMemberId: bill.paidByMemberId,
         paidByName: bill.paidBy.displayName,
         status: bill.status,

@@ -9,10 +9,12 @@ import {
   groupMembers,
   users,
   bills,
+  billGrandTotal,
 } from "@splittingwisdom/shared";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireGroupMember } from "../middleware/authorize.js";
+import { computeGroupBalances, memberNetBalance } from "../lib/group-balance.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -56,24 +58,30 @@ router.get("/", async (req, res) => {
       bills: { columns: { id: true, createdAt: true } },
     },
   });
+  const myMemberIdByGroup = new Map(myMemberships.map((m) => [m.groupId, m.id]));
 
-  const result = rows.map((group) => ({
-    id: group.id,
-    name: group.name,
-    coverImage: group.coverImage,
-    memberCount: group.members.length,
-    billCount: group.bills.length,
-    // Real balances arrive with the balance engine in Checkpoint E.
-    myBalance: 0,
-    memberPreview: group.members.slice(0, 5).map((m) => m.displayName),
-    lastActivity:
-      group.bills.length > 0
-        ? group.bills.reduce(
-            (latest, b) => (b.createdAt > latest ? b.createdAt : latest),
-            group.bills[0].createdAt,
-          )
-        : group.updatedAt,
-  }));
+  const result = await Promise.all(
+    rows.map(async (group) => {
+      const { pairwise, lastActivity } = await computeGroupBalances(group.id);
+      const myMemberId = myMemberIdByGroup.get(group.id)!;
+      const myBalance = memberNetBalance(
+        pairwise,
+        myMemberId,
+        group.members.map((m) => m.id),
+      );
+
+      return {
+        id: group.id,
+        name: group.name,
+        coverImage: group.coverImage,
+        memberCount: group.members.length,
+        billCount: group.bills.length,
+        myBalance,
+        memberPreview: group.members.slice(0, 5).map((m) => m.displayName),
+        lastActivity: lastActivity ?? group.updatedAt,
+      };
+    }),
+  );
 
   res.json({ data: { groups: result } });
 });
@@ -142,6 +150,9 @@ router.get("/:id", requireGroupMember("id"), async (req, res) => {
     return;
   }
 
+  const { pairwise } = await computeGroupBalances(group.id);
+  const allMemberIds = group.members.map((m) => m.id);
+
   res.json({
     data: {
       group: {
@@ -152,8 +163,7 @@ router.get("/:id", requireGroupMember("id"), async (req, res) => {
           userId: m.userId,
           isLinked: m.userId !== null,
           joinedAt: m.joinedAt,
-          // Real per-member balance arrives with the balance engine in Checkpoint E.
-          balance: 0,
+          balance: memberNetBalance(pairwise, m.id, allMemberIds),
         })),
       },
     },
@@ -177,7 +187,7 @@ router.get("/:id/bills", requireGroupMember("id"), async (req, res) => {
         description: b.description,
         merchant: b.merchant,
         billDate: b.billDate,
-        grandTotal: b.subtotalAmount + b.taxAmount + b.tipAmount + b.serviceFeeAmount - b.discountAmount,
+        grandTotal: billGrandTotal(b),
         paidByName: b.paidBy.displayName,
         status: b.status,
         createdAt: b.createdAt,
