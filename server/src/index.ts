@@ -11,6 +11,12 @@ const app = express();
 const PORT = process.env.PORT ?? 4000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
 
+// Render (and most PaaS platforms) terminate TLS at a reverse proxy and
+// forward plain HTTP internally. Without this, Express can't tell the
+// original request was HTTPS, which breaks `secure: true` session cookies
+// (required for SameSite=None, which cross-origin client<->API needs).
+app.set("trust proxy", 1);
+
 app.use(
   cors({
     origin: CLIENT_ORIGIN,
