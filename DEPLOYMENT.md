@@ -68,8 +68,13 @@ starts). Check the **Table Editor** in Supabase to confirm the tables exist.
    - **Runtime**: `Node`
    - **Build Command**:
      ```
-     npm install && npm run build --workspace=shared && npm run build --workspace=server
+     npm install --include=dev && npm run build --workspace=shared && npm run build --workspace=server
      ```
+     (`--include=dev` matters: Render sets `NODE_ENV=production` for the
+     whole build, and plain `npm install` silently skips devDependencies
+     — including `typescript`, `drizzle-kit`, and `tsx` — under that env
+     var, which breaks the build in a confusing way. This flag forces them
+     in regardless.)
    - **Start Command**:
      ```
      npm run start --workspace=server
@@ -106,12 +111,14 @@ naturally keeps it warm.
    - **Framework Preset**: Vercel should auto-detect **Vite**
    - **Install Command**: override to
      ```
-     cd .. && npm install
+     cd .. && npm install --include=dev
      ```
      (Vercel installs from the `client` directory by default when Root
      Directory is set; this override runs the install from the monorepo
      root instead, so `@splittingwisdom/shared` and every workspace's
-     deps are actually present.)
+     deps are actually present. `--include=dev` matters here too — Vercel
+     also sets `NODE_ENV=production` during builds, which silently skips
+     devDependencies like `typescript` on plain `npm install`.)
    - **Build Command**: override to
      ```
      cd .. && npm run build --workspace=shared && npm run build --workspace=client
