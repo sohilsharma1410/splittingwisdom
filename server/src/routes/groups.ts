@@ -15,27 +15,10 @@ import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireGroupMember } from "../middleware/authorize.js";
 import { computeGroupBalances, memberNetBalance } from "../lib/group-balance.js";
+import { isForeignKeyViolation, isUniqueViolation } from "../lib/pg-errors.js";
 
 const router = Router();
 router.use(requireAuth);
-
-function isForeignKeyViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: unknown }).code === "23503"
-  );
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: unknown }).code === "23505"
-  );
-}
 
 // ---------------------------------------------------------------------------
 // GET /api/groups — groups the current user is a member of

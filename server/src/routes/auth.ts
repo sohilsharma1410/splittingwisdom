@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { registerSchema, loginSchema, users } from "@splittingwisdom/shared";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { isUniqueViolation } from "../lib/pg-errors.js";
 
 const router = Router();
 const BCRYPT_ROUNDS = 12;
@@ -102,14 +103,5 @@ router.get("/me", requireAuth, async (req, res) => {
 
   res.json({ data: { user: toPublicUser(user) } });
 });
-
-function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: unknown }).code === "23505"
-  );
-}
 
 export default router;
