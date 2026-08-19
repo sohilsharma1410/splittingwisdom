@@ -6,6 +6,7 @@ import { Pencil, Trash2, ChevronDown, Receipt } from "lucide-react";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import { BillFormDialog } from "@/components/bills/bill-form-dialog";
 import { DeleteBillAlert } from "@/components/bills/delete-bill-alert";
 import { useBill } from "@/hooks/use-bills";
@@ -39,15 +40,18 @@ export default function BillDetail() {
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <Link href={`/group/${bill.groupId}`} className="text-sm text-mint hover:underline">
-            {bill.groupName}
-          </Link>
-          <h1 className="mt-1 text-3xl font-semibold">{bill.description}</h1>
-          <p className="mt-1 text-muted-foreground">
-            {format(billDateLocal, "d MMM yyyy")}
-            {bill.merchant && ` · ${bill.merchant}`} · Paid by {bill.paidByName}
-          </p>
+        <div className="flex min-w-0 items-start gap-2">
+          <BackButton fallbackHref={`/group/${bill.groupId}`} />
+          <div className="min-w-0">
+            <Link href={`/group/${bill.groupId}`} className="text-sm text-mint hover:underline">
+              {bill.groupName}
+            </Link>
+            <h1 className="mt-1 text-3xl font-semibold">{bill.description}</h1>
+            <p className="mt-1 text-muted-foreground">
+              {format(billDateLocal, "d MMM yyyy")}
+              {bill.merchant && ` · ${bill.merchant}`} · Paid by {bill.paidByName}
+            </p>
+          </div>
         </div>
         <div className="flex shrink-0 gap-2">
           <Button variant="outline" size="icon" aria-label="Edit bill" onClick={() => setEditOpen(true)}>
@@ -97,91 +101,36 @@ export default function BillDetail() {
         </button>
 
         {showHow && (
-          <div className="mt-3 space-y-4 rounded-xl border border-border bg-surface p-5 text-sm">
-            <div>
-              <p className="font-medium">1. Subtotal split equally among {nMembers} people</p>
-              <p className="mt-1 text-muted-foreground">
-                {formatPaise(bill.subtotalAmount)} ÷ {nMembers} = {formatPaise(Math.floor(bill.subtotalAmount / nMembers))} each,
-                with the leftover paise given one each to members in a fixed order so the total always
-                adds up exactly.
-              </p>
-            </div>
-
-            {(bill.taxAmount > 0 || bill.tipAmount > 0 || bill.serviceFeeAmount > 0) && (
-              <div>
-                <p className="font-medium">2. Tax, tip & fees allocated by item share</p>
-                <p className="mt-1 text-muted-foreground">
-                  Each person's tax, tip, and service fee is proportional to their share of the
-                  subtotal above — someone with a bigger share of the bill pays a bigger share of
-                  the tax. Someone with no items on a bill would owe nothing here.
-                </p>
-                <ul className="mt-2 space-y-1 text-muted-foreground">
-                  {bill.taxAmount > 0 && <li>Tax: {formatPaise(bill.taxAmount)}</li>}
-                  {bill.tipAmount > 0 && <li>Tip: {formatPaise(bill.tipAmount)}</li>}
-                  {bill.serviceFeeAmount > 0 && <li>Service fee: {formatPaise(bill.serviceFeeAmount)}</li>}
-                </ul>
-              </div>
-            )}
-
-            {bill.discountAmount > 0 && (
-              <div>
-                <p className="font-medium">3. Discount subtracted the same way</p>
-                <p className="mt-1 text-muted-foreground">
-                  {formatPaise(bill.discountAmount)} discount is subtracted from each person
-                  proportionally to their item share, same rule as tax above.
-                </p>
-              </div>
-            )}
-
-            <div>
-              <p className="font-medium">Rounding rule</p>
-              <p className="mt-1 text-muted-foreground">
-                Amounts are split in whole paise. Everyone gets the same rounded-down base share;
-                any leftover paise (never more than {nMembers - 1}) go one each to members in a
-                fixed, deterministic order — so the shares always add up to the exact total, never
-                more or less.
-              </p>
-            </div>
-
-            <div className="border-t border-border pt-3">
-              <table className="w-full text-left text-xs">
-                <thead className="text-muted-foreground">
-                  <tr>
-                    <th className="pb-1 font-normal">Person</th>
-                    <th className="pb-1 text-right font-normal">Item</th>
-                    {bill.taxAmount > 0 && <th className="pb-1 text-right font-normal">Tax</th>}
-                    {bill.tipAmount > 0 && <th className="pb-1 text-right font-normal">Tip</th>}
-                    {bill.serviceFeeAmount > 0 && <th className="pb-1 text-right font-normal">Fee</th>}
-                    {bill.discountAmount > 0 && <th className="pb-1 text-right font-normal">Discount</th>}
-                    <th className="pb-1 text-right font-normal">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bill.breakdown.map((row) => (
-                    <tr key={row.memberId} className="border-t border-border">
-                      <td className="py-1.5">{row.displayName}</td>
-                      <td className="py-1.5 text-right tabular-currency">{formatPaise(row.itemShare)}</td>
-                      {bill.taxAmount > 0 && (
-                        <td className="py-1.5 text-right tabular-currency">{formatPaise(row.taxShare)}</td>
+          <div className="mt-3 space-y-3 rounded-xl border border-border bg-surface p-5 text-sm">
+            <p className="text-muted-foreground">
+              Split equally among {nMembers} people
+              {(bill.taxAmount > 0 || bill.tipAmount > 0 || bill.serviceFeeAmount > 0) &&
+                ", with tax/tip/fees added in the same proportion as each person's share"}
+              {bill.discountAmount > 0 && " and any discount subtracted the same way"}. Paise
+              that don't divide evenly go one each to people in a fixed order, so shares always
+              add up exactly — never more, never less.
+            </p>
+            <div className="divide-y divide-border border-t border-border">
+              {bill.breakdown.map((row) => {
+                const parts = [
+                  `${formatPaise(row.itemShare)} item`,
+                  row.taxShare > 0 && `${formatPaise(row.taxShare)} tax`,
+                  row.tipShare > 0 && `${formatPaise(row.tipShare)} tip`,
+                  row.serviceFeeShare > 0 && `${formatPaise(row.serviceFeeShare)} fee`,
+                  row.discountShare > 0 && `−${formatPaise(row.discountShare)} discount`,
+                ].filter((p): p is string => Boolean(p));
+                return (
+                  <div key={row.memberId} className="flex items-center justify-between py-2.5">
+                    <div className="min-w-0 pr-3">
+                      <p className="font-medium">{row.displayName}</p>
+                      {parts.length > 1 && (
+                        <p className="truncate text-xs text-muted-foreground">{parts.join(" + ")}</p>
                       )}
-                      {bill.tipAmount > 0 && (
-                        <td className="py-1.5 text-right tabular-currency">{formatPaise(row.tipShare)}</td>
-                      )}
-                      {bill.serviceFeeAmount > 0 && (
-                        <td className="py-1.5 text-right tabular-currency">{formatPaise(row.serviceFeeShare)}</td>
-                      )}
-                      {bill.discountAmount > 0 && (
-                        <td className="py-1.5 text-right tabular-currency">
-                          -{formatPaise(row.discountShare)}
-                        </td>
-                      )}
-                      <td className="py-1.5 text-right tabular-currency font-semibold">
-                        {formatPaise(row.total)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                    </div>
+                    <span className="tabular-currency shrink-0 font-semibold">{formatPaise(row.total)}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

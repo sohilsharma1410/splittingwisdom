@@ -74,6 +74,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
   const [discountAmount, setDiscountAmount] = useState("");
   const [payerMemberId, setPayerMemberId] = useState<number | null>(null);
   const [splitMemberIds, setSplitMemberIds] = useState<number[] | null>(null);
+  const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function resetForm() {
@@ -89,6 +90,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
     setDiscountAmount("");
     setPayerMemberId(null);
     setSplitMemberIds(null);
+    setShowMemberPicker(false);
     setError(null);
   }
 
@@ -121,6 +123,13 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
     const myMember = groupData.group.members.find((m) => m.userId === user?.id);
     setPayerMemberId(myMember?.id ?? groupData.group.members[0]?.id ?? null);
   }, [groupData, splitMemberIds, user, isEditing]);
+
+  // When editing a bill that isn't split among everyone, show who's excluded
+  // right away instead of hiding it behind the summary.
+  useEffect(() => {
+    if (!isEditing || members.length === 0 || splitMemberIds === null) return;
+    if (splitMemberIds.length !== members.length) setShowMemberPicker(true);
+  }, [isEditing, members, splitMemberIds]);
 
   const preview = useMemo(() => {
     const subtotal = safeRupeesToPaise(totalAmount);
@@ -368,17 +377,32 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
           {effectiveGroupId && (
             <div className="space-y-1.5">
               <Label>Split equally between</Label>
-              <div className="space-y-2 rounded-lg border border-border p-3">
-                {members.map((m) => (
-                  <label key={m.id} className="flex cursor-pointer items-center gap-2.5 text-sm">
-                    <Checkbox
-                      checked={(splitMemberIds ?? []).includes(m.id)}
-                      onCheckedChange={() => toggleSplitMember(m.id)}
-                    />
-                    {m.displayName}
-                  </label>
-                ))}
-              </div>
+              {!showMemberPicker ? (
+                <button
+                  type="button"
+                  onClick={() => setShowMemberPicker(true)}
+                  className="flex w-full items-center justify-between rounded-lg border border-border p-3 text-left text-sm hover:bg-foreground/5"
+                >
+                  <span>
+                    {members.length > 0 && (splitMemberIds?.length ?? 0) === members.length
+                      ? `Everyone (${members.length} people)`
+                      : `${splitMemberIds?.length ?? 0} of ${members.length} people`}
+                  </span>
+                  <span className="text-mint">Change</span>
+                </button>
+              ) : (
+                <div className="space-y-2 rounded-lg border border-border p-3">
+                  {members.map((m) => (
+                    <label key={m.id} className="flex cursor-pointer items-center gap-2.5 text-sm">
+                      <Checkbox
+                        checked={(splitMemberIds ?? []).includes(m.id)}
+                        onCheckedChange={() => toggleSplitMember(m.id)}
+                      />
+                      {m.displayName}
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

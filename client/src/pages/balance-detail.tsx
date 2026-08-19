@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { useBalanceDetail } from "@/hooks/use-balances";
 import { formatPaise } from "@splittingwisdom/shared";
@@ -34,6 +35,7 @@ export default function BalanceDetail() {
   return (
     <div className="space-y-6">
       <header className="flex items-center gap-3">
+        <BackButton fallbackHref="/balances" />
         <InitialsAvatar name={data.displayName} className="h-12 w-12 text-base" />
         <div>
           <h1 className="text-2xl font-semibold">{data.displayName}</h1>

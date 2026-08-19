@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -55,12 +56,15 @@ export default function GroupDetail() {
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold">{group.name}</h1>
-          <p className="mt-1 text-muted-foreground">
-            {group.members.length} member{group.members.length === 1 ? "" : "s"} ·{" "}
-            {billsData?.bills.length ?? 0} bill{billsData?.bills.length === 1 ? "" : "s"}
-          </p>
+        <div className="flex min-w-0 items-start gap-2">
+          <BackButton fallbackHref="/groups" />
+          <div>
+            <h1 className="text-3xl font-semibold">{group.name}</h1>
+            <p className="mt-1 text-muted-foreground">
+              {group.members.length} member{group.members.length === 1 ? "" : "s"} ·{" "}
+              {billsData?.bills.length ?? 0} bill{billsData?.bills.length === 1 ? "" : "s"}
+            </p>
+          </div>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
