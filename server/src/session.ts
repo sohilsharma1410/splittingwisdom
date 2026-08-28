@@ -12,7 +12,15 @@ const isProduction = process.env.NODE_ENV === "production";
 
 export const sessionMiddleware = session({
   store: new PgSession({
-    conString: process.env.DATABASE_URL,
+    // connect-pg-simple builds its own `pg` Pool from this and does not
+    // parse sslmode out of a bare connection string the way some other
+    // clients do — without an explicit ssl option here, connecting to
+    // Supabase's pooler is unreliable (works sometimes, fails silently
+    // other times depending on how pg negotiates the connection).
+    conObject: {
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+    },
     tableName: "session",
     createTableIfMissing: true,
   }),
