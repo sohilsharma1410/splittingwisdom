@@ -19,7 +19,7 @@ function ActivityCard({ bill }: { bill: ActivityBillItem }) {
 
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3 pr-20 md:pr-0">
         <Link href={`/bill/${bill.id}`} className="min-w-0 flex-1">
           <p className="truncate font-medium hover:underline">{bill.description}</p>
           <p className="mt-0.5 text-sm text-muted-foreground">

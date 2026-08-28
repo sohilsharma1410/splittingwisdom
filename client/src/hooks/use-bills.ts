@@ -97,7 +97,7 @@ export function useBill(id: number) {
   return useQuery({
     queryKey: ["bills", id],
     queryFn: () => apiFetch<{ bill: BillDetail }>(`/api/bills/${id}`),
-    enabled: Number.isInteger(id),
+    enabled: Number.isInteger(id) && id > 0,
   });
 }
 

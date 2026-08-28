@@ -132,7 +132,7 @@ export default function Dashboard() {
                   <Link
                     key={bill.id}
                     href={`/bill/${bill.id}`}
-                    className="flex items-center justify-between gap-4 rounded-xl border border-border bg-surface p-4 hover:shadow-md"
+                    className="flex items-center justify-between gap-4 rounded-xl border border-border bg-surface p-4 pr-20 hover:shadow-md md:pr-4"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{bill.description}</p>
@@ -162,7 +162,7 @@ export default function Dashboard() {
                     <Link
                       key={b.personId}
                       href={`/balance/${b.personId}`}
-                      className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4 hover:shadow-md"
+                      className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4 pr-20 hover:shadow-md md:pr-4"
                     >
                       <InitialsAvatar name={b.displayName} />
                       <div className="min-w-0 flex-1">

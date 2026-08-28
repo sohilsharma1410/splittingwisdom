@@ -20,7 +20,7 @@ function BalanceCard({ balance }: { balance: BalanceSummaryItem }) {
   return (
     <Link
       href={`/balance/${balance.personId}`}
-      className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4 transition-shadow hover:shadow-md"
+      className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4 pr-20 transition-shadow hover:shadow-md md:pr-4"
     >
       <InitialsAvatar name={balance.displayName} />
       <div className="min-w-0 flex-1">

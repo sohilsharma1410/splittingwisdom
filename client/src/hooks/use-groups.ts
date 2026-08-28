@@ -49,7 +49,7 @@ export function useGroup(id: number) {
   return useQuery({
     queryKey: ["groups", id],
     queryFn: () => apiFetch<{ group: GroupDetail }>(`/api/groups/${id}`),
-    enabled: Number.isInteger(id),
+    enabled: Number.isInteger(id) && id > 0,
   });
 }
 
