@@ -2,15 +2,43 @@ import { useState } from "react";
 import { useParams, Link } from "wouter";
 import { format } from "date-fns";
 import { parseDateOnly } from "@/lib/date";
-import { Pencil, Trash2, ChevronDown, Receipt } from "lucide-react";
+import { Pencil, Trash2, ChevronDown, Receipt, AlertTriangle, Users } from "lucide-react";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/ui/back-button";
+import { InitialsAvatar } from "@/components/ui/avatar";
 import { BillFormDialog } from "@/components/bills/bill-form-dialog";
 import { DeleteBillAlert } from "@/components/bills/delete-bill-alert";
-import { useBill } from "@/hooks/use-bills";
+import { AssignmentEditor } from "@/components/bills/assignment-editor";
+import { useBill, useUpdateBill, type BillItemDetail, type BillItemInput, type ItemAssignmentInput } from "@/hooks/use-bills";
+import { useGroup } from "@/hooks/use-groups";
+import { useToast } from "@/components/ui/toast";
+import { memberColor } from "@/lib/member-colors";
+import { cn } from "@/lib/utils";
 import { formatPaise } from "@splittingwisdom/shared";
+
+const SPLIT_TYPE_LABEL: Record<string, string> = {
+  equal: "split equally",
+  percentage: "by percentage",
+  ratio: "by ratio",
+  custom: "custom amount",
+};
+
+function itemToInput(item: BillItemDetail): BillItemInput {
+  return {
+    name: item.name,
+    price: item.price,
+    quantity: item.quantity,
+    assignments: item.assignments.map((a) => ({
+      memberId: a.memberId,
+      splitType: a.splitType,
+      percentage: a.percentage ?? undefined,
+      ratio: a.ratio ?? undefined,
+      customAmount: a.customAmount ?? undefined,
+    })),
+  };
+}
 
 export default function BillDetail() {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +47,12 @@ export default function BillDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [showHow, setShowHow] = useState(false);
+  const [assigningItem, setAssigningItem] = useState<BillItemDetail | null>(null);
+  const { toast } = useToast();
+
+  const updateBill = useUpdateBill(billId, data?.bill.groupId ?? -1);
+  const { data: groupData } = useGroup(data?.bill.groupId ?? -1);
+  const groupMembers = groupData?.group.members ?? [];
 
   if (isLoading) {
     return (
@@ -34,8 +68,36 @@ export default function BillDetail() {
   }
 
   const { bill } = data;
-  const nMembers = bill.breakdown.length;
   const billDateLocal = parseDateOnly(bill.billDate);
+  const assignedCount = bill.itemCount - bill.unassignedItemCount;
+  const totalAssignedItemShare = bill.breakdown.reduce((sum, row) => sum + row.itemShare, 0);
+
+  async function saveItemAssignments(itemId: number, assignments: ItemAssignmentInput[]) {
+    const nextItems: BillItemInput[] = bill.items.map((item) =>
+      item.id === itemId ? { ...itemToInput(item), assignments } : itemToInput(item),
+    );
+    try {
+      await updateBill.mutateAsync({ items: nextItems });
+      toast({ title: "Assignment saved", variant: "success" });
+    } catch {
+      toast({ title: "Couldn't save assignment", variant: "error" });
+    }
+  }
+
+  async function assignAllEqually() {
+    const allMemberIds = groupMembers.map((m) => m.id);
+    const nextItems: BillItemInput[] = bill.items.map((item) => {
+      const input = itemToInput(item);
+      if (input.assignments.length > 0) return input;
+      return { ...input, assignments: allMemberIds.map((memberId) => ({ memberId, splitType: "equal" as const })) };
+    });
+    try {
+      await updateBill.mutateAsync({ items: nextItems });
+      toast({ title: "Unassigned items split equally", variant: "success" });
+    } catch {
+      toast({ title: "Couldn't update assignments", variant: "error" });
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -79,6 +141,41 @@ export default function BillDetail() {
       </section>
 
       <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Items</h2>
+          <span className="text-sm text-muted-foreground">
+            {assignedCount} of {bill.itemCount} assigned
+          </span>
+        </div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-foreground/10">
+          <div
+            className="h-full rounded-full bg-mint transition-all"
+            style={{ width: bill.itemCount > 0 ? `${(assignedCount / bill.itemCount) * 100}%` : "0%" }}
+          />
+        </div>
+
+        {bill.unassignedItemCount > 0 && (
+          <div className="flex flex-col items-start gap-3 rounded-lg border border-coral/30 bg-coral/10 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <span className="flex items-center gap-2 text-coral">
+              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {bill.unassignedItemCount} item{bill.unassignedItemCount === 1 ? "" : "s"} not assigned yet — excluded
+              from balances until assigned.
+            </span>
+            <Button size="sm" variant="outline" onClick={assignAllEqually} disabled={updateBill.isPending}>
+              <Users className="h-3.5 w-3.5" aria-hidden="true" />
+              Assign all equally
+            </Button>
+          </div>
+        )}
+
+        <div className="divide-y divide-border rounded-xl border border-border bg-surface">
+          {bill.items.map((item) => (
+            <ItemRow key={item.id} item={item} onEdit={() => setAssigningItem(item)} />
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-3">
         <h2 className="text-lg font-semibold">Per-person share</h2>
         <div className="divide-y divide-border rounded-xl border border-border bg-surface">
           {bill.breakdown.map((row) => (
@@ -101,33 +198,47 @@ export default function BillDetail() {
         </button>
 
         {showHow && (
-          <div className="mt-3 space-y-3 rounded-xl border border-border bg-surface p-5 text-sm">
+          <div className="mt-3 space-y-4 rounded-xl border border-border bg-surface p-5 text-sm">
             <p className="text-muted-foreground">
-              Split equally among {nMembers} people
-              {(bill.taxAmount > 0 || bill.tipAmount > 0 || bill.serviceFeeAmount > 0) &&
-                ", with tax/tip/fees added in the same proportion as each person's share"}
-              {bill.discountAmount > 0 && " and any discount subtracted the same way"}. Paise
-              that don't divide evenly go one each to people in a fixed order, so shares always
-              add up exactly — never more, never less.
+              Each item is split among the people assigned to it, using that item's split method. Tax, tip, and
+              fees are then added — and any discount subtracted — in proportion to each person's item total. Paise
+              that don't divide evenly go one each to people in a fixed order, so shares always add up exactly.
             </p>
-            <div className="divide-y divide-border border-t border-border">
+            <div className="space-y-4 border-t border-border pt-4">
               {bill.breakdown.map((row) => {
-                const parts = [
-                  `${formatPaise(row.itemShare)} item`,
-                  row.taxShare > 0 && `${formatPaise(row.taxShare)} tax`,
-                  row.tipShare > 0 && `${formatPaise(row.tipShare)} tip`,
-                  row.serviceFeeShare > 0 && `${formatPaise(row.serviceFeeShare)} fee`,
-                  row.discountShare > 0 && `−${formatPaise(row.discountShare)} discount`,
-                ].filter((p): p is string => Boolean(p));
+                const theirItems = bill.items.filter((item) => item.assignments.some((a) => a.memberId === row.memberId));
+                const proportion =
+                  totalAssignedItemShare > 0 ? Math.round((row.itemShare / totalAssignedItemShare) * 100) : 0;
+                const chargesTotal = row.taxShare + row.tipShare + row.serviceFeeShare - row.discountShare;
+
                 return (
-                  <div key={row.memberId} className="flex items-center justify-between py-2.5">
-                    <div className="min-w-0 pr-3">
+                  <div key={row.memberId}>
+                    <div className="flex items-center justify-between">
                       <p className="font-medium">{row.displayName}</p>
-                      {parts.length > 1 && (
-                        <p className="truncate text-xs text-muted-foreground">{parts.join(" + ")}</p>
-                      )}
+                      <span className="tabular-currency font-semibold">{formatPaise(row.total)}</span>
                     </div>
-                    <span className="tabular-currency shrink-0 font-semibold">{formatPaise(row.total)}</span>
+                    <ul className="mt-1.5 space-y-1 text-xs text-muted-foreground">
+                      {theirItems.map((item) => {
+                        const assignment = item.assignments.find((a) => a.memberId === row.memberId)!;
+                        return (
+                          <li key={item.id} className="flex justify-between gap-2">
+                            <span className="truncate">
+                              {item.name} ({SPLIT_TYPE_LABEL[assignment.splitType]})
+                            </span>
+                            <span className="tabular-currency shrink-0">{formatPaise(assignment.share)}</span>
+                          </li>
+                        );
+                      })}
+                      {chargesTotal !== 0 && (
+                        <li className="flex justify-between gap-2">
+                          <span>
+                            Tax/tip/fees ({proportion}% of the subtotal was theirs)
+                            {row.discountShare > 0 && " · discount applied"}
+                          </span>
+                          <span className="tabular-currency shrink-0">{formatPaise(chargesTotal)}</span>
+                        </li>
+                      )}
+                    </ul>
                   </div>
                 );
               })}
@@ -149,6 +260,68 @@ export default function BillDetail() {
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
       />
+      {assigningItem && (
+        <AssignmentEditor
+          open={!!assigningItem}
+          onOpenChange={(open) => !open && setAssigningItem(null)}
+          item={{ name: assigningItem.name, price: assigningItem.price }}
+          members={groupMembers}
+          initialAssignments={assigningItem.assignments.map((a) => ({
+            memberId: a.memberId,
+            splitType: a.splitType,
+            percentage: a.percentage ?? undefined,
+            ratio: a.ratio ?? undefined,
+            customAmount: a.customAmount ?? undefined,
+          }))}
+          onSave={(assignments) => saveItemAssignments(assigningItem.id, assignments)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ItemRow({ item, onEdit }: { item: BillItemDetail; onEdit: () => void }) {
+  const isAssigned = item.assignments.length > 0;
+  return (
+    <div className="p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:pr-20 md:pr-0">
+        <div className="min-w-0">
+          <p className="truncate font-medium">
+            {item.name}
+            {item.quantity > 1 && <span className="text-muted-foreground"> ×{item.quantity}</span>}
+          </p>
+          <span
+            className={cn(
+              "mt-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+              isAssigned ? "bg-mint/15 text-mint" : "bg-coral/15 text-coral",
+            )}
+          >
+            {isAssigned ? "Assigned" : "Unassigned"}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center justify-between gap-3 pr-20 sm:justify-end sm:pr-0">
+          <span className="tabular-currency text-sm font-semibold">{formatPaise(item.price)}</span>
+          <Button size="sm" variant="outline" onClick={onEdit}>
+            {isAssigned ? "Edit" : "Assign"}
+          </Button>
+        </div>
+      </div>
+      {isAssigned && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {item.assignments.map((a) => {
+            const color = memberColor(a.memberId);
+            return (
+              <span
+                key={a.memberId}
+                className={cn("flex items-center gap-1.5 rounded-full py-0.5 pl-0.5 pr-2 text-xs font-medium", color.bg, color.text)}
+              >
+                <InitialsAvatar name={a.displayName} className={cn(color.bg, color.text, "h-5 w-5 ring-0 text-[10px]")} />
+                {a.displayName} · {formatPaise(a.share)}
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -8,9 +8,11 @@ import {
   itemAssignments,
   groupMembers,
   users,
-  splitEqually,
-  allocateProportionally,
   billGrandTotal,
+  computeBillBreakdown,
+  computeItemShares,
+  type BillItemForBalance,
+  type BillItemInput,
 } from "@splittingwisdom/shared";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -27,34 +29,89 @@ async function loadGroupMemberIds(groupId: number): Promise<Set<number>> {
   return new Set(members.map((m) => m.id));
 }
 
-/** Builds the per-member "how was this calculated" breakdown for a bill. */
-function computeShareBreakdown(bill: {
-  subtotalAmount: number;
+/** Every member id referenced anywhere in an item list (assignments only — a
+ * price alone doesn't reference a person). */
+function memberIdsIn(items: BillItemInput[]): Set<number> {
+  const ids = new Set<number>();
+  for (const item of items) {
+    for (const a of item.assignments) ids.add(a.memberId);
+  }
+  return ids;
+}
+
+type DbBillItem = {
+  id: number;
+  name: string;
+  price: number;
+  quantity: number;
+  assignments: {
+    memberId: number;
+    splitType: "equal" | "percentage" | "ratio" | "custom";
+    percentage: number | null;
+    ratio: number | null;
+    customAmount: number | null;
+    member: { displayName: string };
+  }[];
+};
+
+function toBalanceItems(items: DbBillItem[]): BillItemForBalance[] {
+  return items.map((item) => ({
+    price: item.price,
+    assignments: item.assignments.map((a) => ({
+      memberId: a.memberId,
+      splitType: a.splitType,
+      percentage: a.percentage,
+      ratio: a.ratio,
+      customAmount: a.customAmount,
+    })),
+  }));
+}
+
+/** Item list for the client: each item with its assignments' computed
+ * per-person share, ready to render without re-deriving anything. */
+function buildItemsResponse(items: DbBillItem[]) {
+  return items.map((item) => {
+    const shares = computeItemShares({
+      price: item.price,
+      assignments: item.assignments.map((a) => ({
+        memberId: a.memberId,
+        splitType: a.splitType,
+        percentage: a.percentage,
+        ratio: a.ratio,
+        customAmount: a.customAmount,
+      })),
+    });
+    return {
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      assignments: item.assignments.map((a) => ({
+        memberId: a.memberId,
+        displayName: a.member.displayName,
+        splitType: a.splitType,
+        percentage: a.percentage,
+        ratio: a.ratio,
+        customAmount: a.customAmount,
+        share: shares.get(a.memberId) ?? 0,
+      })),
+    };
+  });
+}
+
+function buildBreakdownResponse(items: DbBillItem[], bill: {
+  paidByMemberId: number;
   taxAmount: number;
   tipAmount: number;
   serviceFeeAmount: number;
   discountAmount: number;
-}, memberIds: number[]) {
-  const itemShares = splitEqually(bill.subtotalAmount, memberIds);
-  const taxShares = allocateProportionally(bill.taxAmount, itemShares);
-  const tipShares = allocateProportionally(bill.tipAmount, itemShares);
-  const feeShares = allocateProportionally(bill.serviceFeeAmount, itemShares);
-  const discountShares = allocateProportionally(bill.discountAmount, itemShares);
-
-  return memberIds.map((id) => ({
-    memberId: id,
-    itemShare: itemShares.get(id)!,
-    taxShare: taxShares.get(id)!,
-    tipShare: tipShares.get(id)!,
-    serviceFeeShare: feeShares.get(id)!,
-    discountShare: discountShares.get(id)!,
-    total:
-      itemShares.get(id)! +
-      taxShares.get(id)! +
-      tipShares.get(id)! +
-      feeShares.get(id)! -
-      discountShares.get(id)!,
-  }));
+}) {
+  const memberNames = new Map<number, string>();
+  for (const item of items) {
+    for (const a of item.assignments) memberNames.set(a.memberId, a.member.displayName);
+  }
+  const breakdown = computeBillBreakdown({ ...bill, items: toBalanceItems(items) });
+  return breakdown.map((row) => ({ ...row, displayName: memberNames.get(row.memberId) ?? "Unknown" }));
 }
 
 // ---------------------------------------------------------------------------
@@ -76,18 +133,16 @@ router.get("/", async (req, res) => {
     with: {
       group: { columns: { name: true } },
       paidBy: true,
-      items: { with: { assignments: { with: { member: true } } } },
+      items: { with: { assignments: { with: { member: true } } }, orderBy: (i, { asc }) => [asc(i.sortOrder)] },
     },
     orderBy: (b, { desc }) => [desc(b.createdAt)],
   });
 
   const result = allBills.map((bill) => {
-    const item = bill.items[0];
-    const memberIds = item?.assignments.map((a) => a.memberId) ?? [];
-    const breakdown = memberIds.length > 0 ? computeShareBreakdown(bill, memberIds) : [];
-    const memberNames = new Map((item?.assignments ?? []).map((a) => [a.memberId, a.member.displayName]));
+    const breakdown = buildBreakdownResponse(bill.items, bill);
     const myMemberId = myMemberIdByGroup.get(bill.groupId);
     const myShare = breakdown.find((b) => b.memberId === myMemberId)?.total ?? 0;
+    const assignedItemCount = bill.items.filter((i) => i.assignments.length > 0).length;
 
     return {
       id: bill.id,
@@ -98,13 +153,21 @@ router.get("/", async (req, res) => {
       billDate: bill.billDate,
       grandTotal: billGrandTotal(bill),
       itemCount: bill.items.length,
+      unassignedItemCount: bill.items.length - assignedItemCount,
       paidByName: bill.paidBy.displayName,
       status: bill.status,
       myShare,
       createdAt: bill.createdAt,
+      items: buildItemsResponse(bill.items).map((item) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        assignments: item.assignments,
+      })),
       breakdown: breakdown.map((b) => ({
         memberId: b.memberId,
-        displayName: memberNames.get(b.memberId),
+        displayName: b.displayName,
         total: b.total,
       })),
     };
@@ -128,13 +191,12 @@ router.post("/", async (req, res) => {
   }
 
   const validMemberIds = await loadGroupMemberIds(input.groupId);
-  const invalidSplit = input.splitMemberIds.filter((id) => !validMemberIds.has(id));
-  if (invalidSplit.length > 0 || !validMemberIds.has(input.paidByMemberId)) {
+  const referencedIds = memberIdsIn(input.items);
+  const invalid = [...referencedIds].some((id) => !validMemberIds.has(id));
+  if (invalid || !validMemberIds.has(input.paidByMemberId)) {
     res.status(400).json({ error: { message: "Selected members must belong to this group." } });
     return;
   }
-
-  const uniqueSplitIds = [...new Set(input.splitMemberIds)];
 
   const bill = await db.transaction(async (tx) => {
     const [newBill] = await tx
@@ -154,18 +216,32 @@ router.post("/", async (req, res) => {
       })
       .returning();
 
-    const [item] = await tx
-      .insert(billItems)
-      .values({ billId: newBill.id, name: "Entire bill", price: input.subtotalAmount, sortOrder: 0 })
-      .returning();
+    for (let i = 0; i < input.items.length; i++) {
+      const itemInput = input.items[i];
+      const [item] = await tx
+        .insert(billItems)
+        .values({
+          billId: newBill.id,
+          name: itemInput.name,
+          price: itemInput.price,
+          quantity: itemInput.quantity ?? 1,
+          sortOrder: i,
+        })
+        .returning();
 
-    await tx.insert(itemAssignments).values(
-      uniqueSplitIds.map((memberId) => ({
-        billItemId: item.id,
-        memberId,
-        splitType: "equal" as const,
-      })),
-    );
+      if (itemInput.assignments.length > 0) {
+        await tx.insert(itemAssignments).values(
+          itemInput.assignments.map((a) => ({
+            billItemId: item.id,
+            memberId: a.memberId,
+            splitType: a.splitType,
+            percentage: a.percentage ?? null,
+            ratio: a.ratio ?? null,
+            customAmount: a.customAmount ?? null,
+          })),
+        );
+      }
+    }
 
     return newBill;
   });
@@ -185,7 +261,7 @@ router.get("/:id", async (req, res) => {
     with: {
       group: true,
       paidBy: true,
-      items: { with: { assignments: { with: { member: true } } } },
+      items: { with: { assignments: { with: { member: true } } }, orderBy: (i, { asc }) => [asc(i.sortOrder)] },
     },
   });
   if (!bill) {
@@ -206,12 +282,10 @@ router.get("/:id", async (req, res) => {
       : Promise.resolve(null),
   ]);
 
-  const item = bill.items[0];
-  const memberIds = item?.assignments.map((a) => a.memberId) ?? [];
-  const breakdown = memberIds.length > 0 ? computeShareBreakdown(bill, memberIds) : [];
-  const memberNames = new Map(
-    (item?.assignments ?? []).map((a) => [a.memberId, a.member.displayName]),
-  );
+  const items = buildItemsResponse(bill.items);
+  const breakdown = buildBreakdownResponse(bill.items, bill);
+  const itemsSubtotal = bill.items.reduce((sum, item) => sum + item.price, 0);
+  const assignedItemCount = bill.items.filter((i) => i.assignments.length > 0).length;
 
   res.json({
     data: {
@@ -223,6 +297,7 @@ router.get("/:id", async (req, res) => {
         merchant: bill.merchant,
         billDate: bill.billDate,
         subtotalAmount: bill.subtotalAmount,
+        itemsSubtotal,
         taxAmount: bill.taxAmount,
         tipAmount: bill.tipAmount,
         serviceFeeAmount: bill.serviceFeeAmount,
@@ -236,8 +311,10 @@ router.get("/:id", async (req, res) => {
         lastEditedAt: bill.lastEditedAt,
         createdAt: bill.createdAt,
         updatedAt: bill.updatedAt,
-        splitMemberIds: memberIds,
-        breakdown: breakdown.map((b) => ({ ...b, displayName: memberNames.get(b.memberId) })),
+        items,
+        itemCount: items.length,
+        unassignedItemCount: items.length - assignedItemCount,
+        breakdown,
       },
     },
   });
@@ -273,10 +350,12 @@ router.patch("/:id", async (req, res) => {
     res.status(400).json({ error: { message: "Payer must belong to this group." } });
     return;
   }
-  const splitMemberIds = input.splitMemberIds ? [...new Set(input.splitMemberIds)] : undefined;
-  if (splitMemberIds?.some((id) => !validMemberIds.has(id))) {
-    res.status(400).json({ error: { message: "Selected members must belong to this group." } });
-    return;
+  if (input.items) {
+    const referencedIds = memberIdsIn(input.items);
+    if ([...referencedIds].some((id) => !validMemberIds.has(id))) {
+      res.status(400).json({ error: { message: "Selected members must belong to this group." } });
+      return;
+    }
   }
 
   const updated = await db.transaction(async (tx) => {
@@ -299,26 +378,40 @@ router.patch("/:id", async (req, res) => {
       .where(eq(bills.id, billId))
       .returning();
 
-    if (splitMemberIds) {
-      const items = await tx.query.billItems.findMany({ where: eq(billItems.billId, billId) });
-      const itemId = items[0]?.id;
-      if (itemId) {
-        if (input.subtotalAmount !== undefined) {
-          await tx.update(billItems).set({ price: input.subtotalAmount }).where(eq(billItems.id, itemId));
-        }
-        await tx.delete(itemAssignments).where(eq(itemAssignments.billItemId, itemId));
-        await tx.insert(itemAssignments).values(
-          splitMemberIds.map((memberId) => ({
-            billItemId: itemId,
-            memberId,
-            splitType: "equal" as const,
-          })),
-        );
+    // Items, when provided, fully replace the bill's existing items and
+    // assignments — same "whole document" pattern Phase 1 used for the
+    // single "Entire bill" item, generalized to a real item list.
+    if (input.items) {
+      const oldItems = await tx.query.billItems.findMany({ where: eq(billItems.billId, billId) });
+      if (oldItems.length > 0) {
+        await tx.delete(billItems).where(eq(billItems.billId, billId));
       }
-    } else if (input.subtotalAmount !== undefined) {
-      const items = await tx.query.billItems.findMany({ where: eq(billItems.billId, billId) });
-      if (items[0]) {
-        await tx.update(billItems).set({ price: input.subtotalAmount }).where(eq(billItems.id, items[0].id));
+
+      for (let i = 0; i < input.items.length; i++) {
+        const itemInput = input.items[i];
+        const [item] = await tx
+          .insert(billItems)
+          .values({
+            billId,
+            name: itemInput.name,
+            price: itemInput.price,
+            quantity: itemInput.quantity ?? 1,
+            sortOrder: i,
+          })
+          .returning();
+
+        if (itemInput.assignments.length > 0) {
+          await tx.insert(itemAssignments).values(
+            itemInput.assignments.map((a) => ({
+              billItemId: item.id,
+              memberId: a.memberId,
+              splitType: a.splitType,
+              percentage: a.percentage ?? null,
+              ratio: a.ratio ?? null,
+              customAmount: a.customAmount ?? null,
+            })),
+          );
+        }
       }
     }
 

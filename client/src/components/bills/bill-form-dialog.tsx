@@ -22,8 +22,9 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/query-client";
 import { useGroups, useGroup } from "@/hooks/use-groups";
-import { useCreateBill, useUpdateBill, type BillDetail } from "@/hooks/use-bills";
+import { useCreateBill, useUpdateBill, type BillDetail, type BillItemInput } from "@/hooks/use-bills";
 import { useAuth } from "@/hooks/use-auth";
+import { ItemListEditor, itemsSubtotal, type ItemRow } from "@/components/bills/item-list-editor";
 import {
   formatPaise,
   rupeesToPaise,
@@ -39,6 +40,15 @@ function safeRupeesToPaise(input: string): number {
   } catch {
     return 0;
   }
+}
+
+/** A bill is "Quick Split shaped" if it's one item, equally split — the
+ * same data shape whether it came from the Quick Split or itemized path
+ * (per the phase 2 plan). Anything else needs the item list editor. */
+function isQuickSplitShaped(bill: BillDetail): boolean {
+  if (bill.items.length !== 1) return false;
+  const [item] = bill.items;
+  return item.assignments.every((a) => a.splitType === "equal");
 }
 
 interface BillFormDialogProps {
@@ -66,32 +76,48 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
   const [merchant, setMerchant] = useState("");
   const [billDate, setBillDate] = useState<Date>(new Date());
   const [datePopoverOpen, setDatePopoverOpen] = useState(false);
-  const [totalAmount, setTotalAmount] = useState("");
   const [showCharges, setShowCharges] = useState(false);
   const [taxAmount, setTaxAmount] = useState("");
   const [tipAmount, setTipAmount] = useState("");
   const [serviceFeeAmount, setServiceFeeAmount] = useState("");
   const [discountAmount, setDiscountAmount] = useState("");
   const [payerMemberId, setPayerMemberId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Quick Split mode — one field, equal split among selected members.
+  const [quickSplit, setQuickSplit] = useState(true);
+  const [totalAmount, setTotalAmount] = useState("");
   const [splitMemberIds, setSplitMemberIds] = useState<number[] | null>(null);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  // Itemized mode — a real item list; items start unassigned (assigned on
+  // Bill Detail afterward). Existing item ids/assignments are carried
+  // forward when editing so untouched items keep their assignments.
+  const [items, setItems] = useState<ItemRow[]>([{ key: crypto.randomUUID(), name: "", price: "", quantity: "1" }]);
+  const [existingItemData, setExistingItemData] = useState<Map<string, BillItemInput["assignments"]>>(new Map());
+  const [showReceiptTotal, setShowReceiptTotal] = useState(false);
+  const [receiptTotal, setReceiptTotal] = useState("");
 
   function resetForm() {
     setGroupId(lockedGroupId ?? editBill?.groupId ?? null);
     setDescription("");
     setMerchant("");
     setBillDate(new Date());
-    setTotalAmount("");
     setShowCharges(false);
     setTaxAmount("");
     setTipAmount("");
     setServiceFeeAmount("");
     setDiscountAmount("");
     setPayerMemberId(null);
+    setError(null);
+    setQuickSplit(true);
+    setTotalAmount("");
     setSplitMemberIds(null);
     setShowMemberPicker(false);
-    setError(null);
+    setItems([{ key: crypto.randomUUID(), name: "", price: "", quantity: "1" }]);
+    setExistingItemData(new Map());
+    setShowReceiptTotal(false);
+    setReceiptTotal("");
   }
 
   // Prefill every field from the bill being edited, as soon as the dialog opens.
@@ -100,7 +126,6 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
     setDescription(editBill.description);
     setMerchant(editBill.merchant ?? "");
     setBillDate(parseDateOnly(editBill.billDate));
-    setTotalAmount(paiseToRupeeInput(editBill.subtotalAmount));
     setTaxAmount(editBill.taxAmount ? paiseToRupeeInput(editBill.taxAmount) : "");
     setTipAmount(editBill.tipAmount ? paiseToRupeeInput(editBill.tipAmount) : "");
     setServiceFeeAmount(editBill.serviceFeeAmount ? paiseToRupeeInput(editBill.serviceFeeAmount) : "");
@@ -112,7 +137,32 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
         editBill.discountAmount > 0,
     );
     setPayerMemberId(editBill.paidByMemberId);
-    setSplitMemberIds(editBill.splitMemberIds);
+
+    if (isQuickSplitShaped(editBill)) {
+      setQuickSplit(true);
+      setTotalAmount(paiseToRupeeInput(editBill.items[0].price));
+      setSplitMemberIds(editBill.items[0].assignments.map((a) => a.memberId));
+    } else {
+      setQuickSplit(false);
+      const rows: ItemRow[] = [];
+      const carry = new Map<string, BillItemInput["assignments"]>();
+      for (const item of editBill.items) {
+        const key = crypto.randomUUID();
+        rows.push({ key, name: item.name, price: paiseToRupeeInput(item.price), quantity: String(item.quantity) });
+        carry.set(
+          key,
+          item.assignments.map((a) => ({
+            memberId: a.memberId,
+            splitType: a.splitType,
+            percentage: a.percentage ?? undefined,
+            ratio: a.ratio ?? undefined,
+            customAmount: a.customAmount ?? undefined,
+          })),
+        );
+      }
+      setItems(rows);
+      setExistingItemData(carry);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editBill]);
 
@@ -131,7 +181,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
     if (splitMemberIds.length !== members.length) setShowMemberPicker(true);
   }, [isEditing, members, splitMemberIds]);
 
-  const preview = useMemo(() => {
+  const quickPreview = useMemo(() => {
     const subtotal = safeRupeesToPaise(totalAmount);
     const tax = safeRupeesToPaise(taxAmount);
     const tip = safeRupeesToPaise(tipAmount);
@@ -161,6 +211,10 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
     return { rows, grandTotal: subtotal + tax + tip + fee - discount };
   }, [totalAmount, taxAmount, tipAmount, serviceFeeAmount, discountAmount, splitMemberIds, members]);
 
+  const itemsTotal = itemsSubtotal(items);
+  const receiptMismatch =
+    showReceiptTotal && receiptTotal.trim() !== "" ? safeRupeesToPaise(receiptTotal) - itemsTotal : 0;
+
   function toggleSplitMember(id: number) {
     setSplitMemberIds((current) => {
       const list = current ?? [];
@@ -180,18 +234,46 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
       setError("Description is required.");
       return;
     }
-    const subtotal = safeRupeesToPaise(totalAmount);
-    if (subtotal <= 0) {
-      setError("Total amount must be greater than zero.");
-      return;
-    }
     if (!payerMemberId) {
       setError("Choose who paid.");
       return;
     }
-    if (!splitMemberIds || splitMemberIds.length === 0) {
-      setError("Select at least one person to split with.");
-      return;
+
+    let billItems: BillItemInput[];
+    let subtotalAmount: number;
+
+    if (quickSplit) {
+      const subtotal = safeRupeesToPaise(totalAmount);
+      if (subtotal <= 0) {
+        setError("Total amount must be greater than zero.");
+        return;
+      }
+      if (!splitMemberIds || splitMemberIds.length === 0) {
+        setError("Select at least one person to split with.");
+        return;
+      }
+      subtotalAmount = subtotal;
+      billItems = [
+        {
+          name: "Entire bill",
+          price: subtotal,
+          quantity: 1,
+          assignments: splitMemberIds.map((memberId) => ({ memberId, splitType: "equal" as const })),
+        },
+      ];
+    } else {
+      const validRows = items.filter((item) => item.name.trim() && safeRupeesToPaise(item.price) > 0);
+      if (validRows.length === 0) {
+        setError("Add at least one item with a name and price.");
+        return;
+      }
+      subtotalAmount = showReceiptTotal && receiptTotal.trim() ? safeRupeesToPaise(receiptTotal) : itemsSubtotal(validRows);
+      billItems = validRows.map((item) => ({
+        name: item.name.trim(),
+        price: safeRupeesToPaise(item.price),
+        quantity: Number(item.quantity || "1"),
+        assignments: existingItemData.get(item.key) ?? [],
+      }));
     }
 
     const payload = {
@@ -199,13 +281,13 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
       description: description.trim(),
       merchant: merchant.trim() || undefined,
       billDate: format(billDate, "yyyy-MM-dd"),
-      subtotalAmount: subtotal,
+      subtotalAmount,
       taxAmount: safeRupeesToPaise(taxAmount),
       tipAmount: safeRupeesToPaise(tipAmount),
       serviceFeeAmount: safeRupeesToPaise(serviceFeeAmount),
       discountAmount: safeRupeesToPaise(discountAmount),
       paidByMemberId: payerMemberId,
-      splitMemberIds,
+      items: billItems,
     };
 
     try {
@@ -236,7 +318,9 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
       <DialogContent className="md:max-w-xl">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Edit Bill" : "New Bill"}</DialogTitle>
-          <DialogDescription>Split a bill equally among selected members.</DialogDescription>
+          <DialogDescription>
+            {quickSplit ? "Split a bill equally among selected members." : "Add each item and assign it afterward."}
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
@@ -329,16 +413,36 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
             </div>
           )}
 
-          <div className="space-y-1.5">
-            <Label htmlFor="bill-total">Total amount</Label>
-            <CurrencyInput
-              id="bill-total"
-              required
-              placeholder="0.00"
-              value={totalAmount}
-              onChange={(e) => setTotalAmount(e.target.value)}
-            />
+          <div className="flex items-center justify-between rounded-lg border border-border p-3">
+            <div>
+              <p className="text-sm font-medium">Quick split</p>
+              <p className="text-xs text-muted-foreground">One amount, split equally</p>
+            </div>
+            <Button type="button" variant={quickSplit ? "default" : "outline"} size="sm" onClick={() => setQuickSplit((q) => !q)}>
+              {quickSplit ? "On" : "Itemize instead"}
+            </Button>
           </div>
+
+          {quickSplit ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="bill-total">Total amount</Label>
+              <CurrencyInput
+                id="bill-total"
+                required
+                placeholder="0.00"
+                value={totalAmount}
+                onChange={(e) => setTotalAmount(e.target.value)}
+              />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label>Items</Label>
+              <ItemListEditor items={items} onChange={setItems} />
+              <p className="text-xs text-muted-foreground">
+                Items start unassigned — you'll assign who's splitting each one from the bill page.
+              </p>
+            </div>
+          )}
 
           <button
             type="button"
@@ -374,7 +478,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
             </div>
           )}
 
-          {effectiveGroupId && (
+          {quickSplit && effectiveGroupId && (
             <div className="space-y-1.5">
               <Label>Split equally between</Label>
               {!showMemberPicker ? (
@@ -406,10 +510,39 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
             </div>
           )}
 
-          {preview.rows.length > 0 && (
+          {!quickSplit && (
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() => setShowReceiptTotal((s) => !s)}
+                className="flex items-center gap-1.5 text-sm font-medium text-mint"
+                aria-expanded={showReceiptTotal}
+              >
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${showReceiptTotal ? "rotate-180" : ""}`}
+                  aria-hidden="true"
+                />
+                Check against the receipt's printed total
+              </button>
+              {showReceiptTotal && (
+                <div className="space-y-1.5">
+                  <CurrencyInput placeholder="0.00" value={receiptTotal} onChange={(e) => setReceiptTotal(e.target.value)} />
+                  {receiptMismatch !== 0 && (
+                    <p role="alert" className="text-xs text-coral">
+                      Items add up to {formatPaise(itemsTotal)}, but the receipt says{" "}
+                      {formatPaise(safeRupeesToPaise(receiptTotal))} — a difference of {formatPaise(Math.abs(receiptMismatch))}.
+                      You can still save; the item total will be used.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {quickSplit && quickPreview.rows.length > 0 && (
             <div className="space-y-1.5 rounded-lg bg-mint/10 p-3 text-sm">
               <p className="font-medium text-mint">Live preview</p>
-              {preview.rows.map((row) => (
+              {quickPreview.rows.map((row) => (
                 <div key={row.id} className="flex justify-between">
                   <span>{row.name}</span>
                   <span className="tabular-currency">{formatPaise(row.total)}</span>
@@ -417,11 +550,11 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
               ))}
               <div className="flex justify-between border-t border-mint/30 pt-1 font-semibold">
                 <span>Total</span>
-                <span className="tabular-currency">{formatPaise(preview.grandTotal)}</span>
+                <span className="tabular-currency">{formatPaise(quickPreview.grandTotal)}</span>
               </div>
             </div>
           )}
-          {totalAmount && safeRupeesToPaise(totalAmount) <= 0 && (
+          {quickSplit && totalAmount && safeRupeesToPaise(totalAmount) <= 0 && (
             <p role="alert" className="text-sm text-coral">
               Total amount must be greater than zero.
             </p>

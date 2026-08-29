@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/query-client";
 
+export type SplitType = "equal" | "percentage" | "ratio" | "custom";
+
 export interface GroupBillSummary {
   id: number;
   description: string;
@@ -23,6 +25,24 @@ export interface BillShareBreakdown {
   total: number;
 }
 
+export interface ItemAssignmentDetail {
+  memberId: number;
+  displayName: string;
+  splitType: SplitType;
+  percentage: number | null;
+  ratio: number | null;
+  customAmount: number | null;
+  share: number;
+}
+
+export interface BillItemDetail {
+  id: number;
+  name: string;
+  price: number;
+  quantity: number;
+  assignments: ItemAssignmentDetail[];
+}
+
 export interface BillDetail {
   id: number;
   groupId: number;
@@ -31,6 +51,7 @@ export interface BillDetail {
   merchant: string | null;
   billDate: string;
   subtotalAmount: number;
+  itemsSubtotal: number;
   taxAmount: number;
   tipAmount: number;
   serviceFeeAmount: number;
@@ -44,8 +65,26 @@ export interface BillDetail {
   lastEditedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  splitMemberIds: number[];
+  items: BillItemDetail[];
+  itemCount: number;
+  unassignedItemCount: number;
   breakdown: BillShareBreakdown[];
+}
+
+/** One item row as sent to the server — assignments empty means unassigned. */
+export interface ItemAssignmentInput {
+  memberId: number;
+  splitType: SplitType;
+  percentage?: number;
+  ratio?: number;
+  customAmount?: number;
+}
+
+export interface BillItemInput {
+  name: string;
+  price: number;
+  quantity?: number;
+  assignments: ItemAssignmentInput[];
 }
 
 export interface CreateBillInput {
@@ -59,7 +98,7 @@ export interface CreateBillInput {
   serviceFeeAmount: number;
   discountAmount: number;
   paidByMemberId: number;
-  splitMemberIds: number[];
+  items: BillItemInput[];
 }
 
 export interface ActivityBillItem {
@@ -71,10 +110,12 @@ export interface ActivityBillItem {
   billDate: string;
   grandTotal: number;
   itemCount: number;
+  unassignedItemCount: number;
   paidByName: string;
   status: "pending" | "settled";
   myShare: number;
   createdAt: string;
+  items: BillItemDetail[];
   breakdown: { memberId: number; displayName: string; total: number }[];
 }
 

@@ -4,9 +4,10 @@ import {
   groupMembers,
   bills,
   groups,
-  splitEqually,
-  allocateProportionally,
   billGrandTotal,
+  computeBillBreakdown,
+  computeItemShares,
+  type BillItemForBalance,
 } from "@splittingwisdom/shared";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -90,6 +91,7 @@ router.get("/:personId", async (req, res) => {
     payerName: string;
     grandTotal: number;
     theirShare: number;
+    items: { itemId: number; name: string; price: number; splitType: string; share: number }[];
   }[] = [];
 
   for (const target of targets) {
@@ -112,48 +114,77 @@ router.get("/:personId", async (req, res) => {
     displayName = counterpartyMember.user?.displayName ?? counterpartyMember.displayName;
 
     for (const bill of groupBills) {
-      const aggregateShares = new Map<number, number>();
-      for (const item of bill.items) {
-        const shares = splitEqually(
-          item.price,
-          item.assignments.map((a) => a.memberId),
-        );
-        for (const [memberId, share] of shares) {
-          aggregateShares.set(memberId, (aggregateShares.get(memberId) ?? 0) + share);
-        }
-      }
-      if (aggregateShares.size === 0) continue;
+      const balanceItems: BillItemForBalance[] = bill.items.map((item) => ({
+        price: item.price,
+        assignments: item.assignments.map((a) => ({
+          memberId: a.memberId,
+          splitType: a.splitType,
+          percentage: a.percentage,
+          ratio: a.ratio,
+          customAmount: a.customAmount,
+        })),
+      }));
+      const breakdown = computeBillBreakdown({
+        paidByMemberId: bill.paidByMemberId,
+        taxAmount: bill.taxAmount,
+        tipAmount: bill.tipAmount,
+        serviceFeeAmount: bill.serviceFeeAmount,
+        discountAmount: bill.discountAmount,
+        items: balanceItems,
+      });
+      if (breakdown.length === 0) continue;
 
-      const taxShares = allocateProportionally(bill.taxAmount, aggregateShares);
-      const tipShares = allocateProportionally(bill.tipAmount, aggregateShares);
-      const feeShares = allocateProportionally(bill.serviceFeeAmount, aggregateShares);
-      const discountShares = allocateProportionally(bill.discountAmount, aggregateShares);
-
-      function totalFor(memberId: number): number {
-        if (!aggregateShares.has(memberId)) return 0;
-        return (
-          (aggregateShares.get(memberId) ?? 0) +
-          (taxShares.get(memberId) ?? 0) +
-          (tipShares.get(memberId) ?? 0) +
-          (feeShares.get(memberId) ?? 0) -
-          (discountShares.get(memberId) ?? 0)
-        );
-      }
-
-      let effect = 0;
-      let theirShare = 0;
       const payerIsMe = bill.paidByMemberId === myMemberId;
       const payerIsThem = bill.paidByMemberId === target.counterpartyMemberId;
 
-      if (payerIsMe && aggregateShares.has(target.counterpartyMemberId)) {
-        theirShare = totalFor(target.counterpartyMemberId);
-        effect = theirShare; // they owe me
-      } else if (payerIsThem && aggregateShares.has(myMemberId)) {
-        theirShare = totalFor(myMemberId);
-        effect = -theirShare; // I owe them
+      let effect = 0;
+      let theirShare = 0;
+      // The relevant person for the item-level "what's driving this" list:
+      // the counterparty when I paid (they owe me), or me when they paid.
+      let relevantMemberId: number | null = null;
+
+      if (payerIsMe) {
+        const row = breakdown.find((r) => r.memberId === target.counterpartyMemberId);
+        if (row) {
+          theirShare = row.total;
+          effect = theirShare; // they owe me
+          relevantMemberId = target.counterpartyMemberId;
+        }
+      } else if (payerIsThem) {
+        const row = breakdown.find((r) => r.memberId === myMemberId);
+        if (row) {
+          theirShare = row.total;
+          effect = -theirShare; // I owe them
+          relevantMemberId = myMemberId;
+        }
       }
 
-      if (effect === 0) continue;
+      if (effect === 0 || relevantMemberId === null) continue;
+
+      const items = bill.items.flatMap((item) => {
+        const assignment = item.assignments.find((a) => a.memberId === relevantMemberId);
+        if (!assignment) return [];
+        const shares = computeItemShares({
+          price: item.price,
+          assignments: item.assignments.map((a) => ({
+            memberId: a.memberId,
+            splitType: a.splitType,
+            percentage: a.percentage,
+            ratio: a.ratio,
+            customAmount: a.customAmount,
+          })),
+        });
+        return [
+          {
+            itemId: item.id,
+            name: item.name,
+            price: item.price,
+            splitType: assignment.splitType,
+            share: shares.get(relevantMemberId!) ?? 0,
+          },
+        ];
+      });
+
       netAmount += effect;
       contributingBills.push({
         billId: bill.id,
@@ -164,6 +195,7 @@ router.get("/:personId", async (req, res) => {
         payerName: bill.paidBy.displayName,
         grandTotal: billGrandTotal(bill),
         theirShare,
+        items,
       });
     }
   }

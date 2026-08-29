@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { Activity as ActivityIcon, ChevronDown, CheckCircle2, Clock } from "lucide-react";
+import { Activity as ActivityIcon, ChevronDown, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,12 +10,19 @@ import { useActivity, type ActivityBillItem } from "@/hooks/use-bills";
 import { formatPaise } from "@splittingwisdom/shared";
 import { parseDateOnly } from "@/lib/date";
 import { cn } from "@/lib/utils";
+import { memberColor } from "@/lib/member-colors";
 
 type Filter = "all" | "pending" | "settled";
 
+const SPLIT_TYPE_LABEL: Record<string, string> = {
+  equal: "equal",
+  percentage: "percentage",
+  ratio: "ratio",
+  custom: "custom",
+};
+
 function ActivityCard({ bill }: { bill: ActivityBillItem }) {
   const [expanded, setExpanded] = useState(false);
-  const maxShare = Math.max(...bill.breakdown.map((b) => b.total), 1);
 
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
@@ -57,23 +64,48 @@ function ActivityCard({ bill }: { bill: ActivityBillItem }) {
       </div>
 
       {expanded && (
-        <div className="mt-3 space-y-2 border-t border-border pt-3">
-          {bill.breakdown.map((row) => (
-            <div key={row.memberId}>
-              <div className="flex justify-between text-xs">
-                <span>{row.displayName}</span>
-                <span className="tabular-currency">
-                  {formatPaise(row.total)} ({Math.round((row.total / bill.grandTotal) * 100)}%)
-                </span>
+        <div className="mt-3 space-y-3 border-t border-border pt-3">
+          {bill.unassignedItemCount > 0 && (
+            <p className="flex items-center gap-1.5 text-xs text-coral">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {bill.unassignedItemCount} item{bill.unassignedItemCount === 1 ? "" : "s"} not assigned yet.
+            </p>
+          )}
+          {bill.items.map((item) => {
+            const itemTotal = item.assignments.reduce((sum, a) => sum + a.share, 0);
+            return (
+              <div key={item.id}>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="truncate font-medium text-foreground">{item.name}</span>
+                  <span className="tabular-currency shrink-0 text-muted-foreground">{formatPaise(item.price)}</span>
+                </div>
+                {item.assignments.length === 0 ? (
+                  <p className="mt-1 text-xs text-muted-foreground">Unassigned</p>
+                ) : (
+                  <div className="mt-1 flex h-2 w-full overflow-hidden rounded-full bg-foreground/10">
+                    {item.assignments.map((a) => (
+                      <div
+                        key={a.memberId}
+                        className={memberColor(a.memberId).dot}
+                        style={{ width: itemTotal > 0 ? `${(a.share / itemTotal) * 100}%` : 0 }}
+                        title={`${a.displayName}: ${formatPaise(a.share)}`}
+                      />
+                    ))}
+                  </div>
+                )}
+                {item.assignments.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                    {item.assignments.map((a) => (
+                      <span key={a.memberId} className="flex items-center gap-1">
+                        <span className={cn("h-1.5 w-1.5 rounded-full", memberColor(a.memberId).dot)} aria-hidden="true" />
+                        {a.displayName} {formatPaise(a.share)} ({SPLIT_TYPE_LABEL[a.splitType]})
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-foreground/10">
-                <div
-                  className="h-full rounded-full bg-mint"
-                  style={{ width: `${(row.total / maxShare) * 100}%` }}
-                />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { LayoutDashboard, Users, Receipt, TrendingUp, TrendingDown, CheckCircle2 } from "lucide-react";
+import { LayoutDashboard, Users, Receipt, TrendingUp, TrendingDown, CheckCircle2, AlertTriangle } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -140,6 +140,12 @@ export default function Dashboard() {
                         {bill.groupName} · {format(parseDateOnly(bill.billDate), "d MMM yyyy")} · Paid by{" "}
                         {bill.paidByName}
                       </p>
+                      {bill.unassignedItemCount > 0 && (
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-coral">
+                          <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+                          {bill.unassignedItemCount} item{bill.unassignedItemCount === 1 ? "" : "s"} unassigned
+                        </p>
+                      )}
                     </div>
                     <span className="tabular-currency shrink-0 font-semibold">
                       {formatPaise(bill.grandTotal)}

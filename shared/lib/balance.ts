@@ -4,14 +4,50 @@ import { splitEqually, allocateProportionally } from "./money.js";
  * Inputs are plain data, not DB rows — server endpoints map query results
  * into these shapes and call computeBalances. This keeps the money math
  * testable without a database.
- *
- * `memberIds` on an item is Phase 1's equal-split assignment list. Later
- * phases add percentage/ratio/custom split data to BillItemForBalance
- * without changing this function's contract.
  */
+export type SplitType = "equal" | "percentage" | "ratio" | "custom";
+
+export interface ItemAssignmentForBalance {
+  memberId: number;
+  splitType: SplitType;
+  percentage?: number | null;
+  ratio?: number | null;
+  customAmount?: number | null;
+}
+
 export interface BillItemForBalance {
   price: number;
-  memberIds: number[];
+  assignments: ItemAssignmentForBalance[];
+}
+
+/**
+ * Splits one item's price among its assignees per their split type. All
+ * assignments on the same item share one split type (the assignment editor
+ * has one split-type selector per item, not per person) — the first
+ * assignment's type governs. An item with no assignments splits to nobody
+ * (unassigned items are excluded from balances, per CLAUDE.md/phase 2 spec).
+ */
+export function computeItemShares(item: BillItemForBalance): Map<number, number> {
+  if (item.assignments.length === 0) return new Map();
+  const splitType = item.assignments[0].splitType;
+
+  switch (splitType) {
+    case "equal":
+      return splitEqually(
+        item.price,
+        item.assignments.map((a) => a.memberId),
+      );
+    case "percentage": {
+      const weights = new Map(item.assignments.map((a) => [a.memberId, a.percentage ?? 0]));
+      return allocateProportionally(item.price, weights);
+    }
+    case "ratio": {
+      const weights = new Map(item.assignments.map((a) => [a.memberId, a.ratio ?? 0]));
+      return allocateProportionally(item.price, weights);
+    }
+    case "custom":
+      return new Map(item.assignments.map((a) => [a.memberId, a.customAmount ?? 0]));
+  }
 }
 
 export interface BillForBalance {
@@ -34,6 +70,62 @@ export interface PairwiseBalance {
   memberIdB: number;
   /** Positive: A owes B this many paise. Negative: B owes A. Zero: settled. */
   netAmount: number;
+}
+
+/** One member's full charge breakdown on a bill — item share, each charge
+ * type's proportional allocation, and the total. Members with no assigned
+ * items don't appear (they owe nothing on this bill, per CLAUDE.md rule 5). */
+export interface BillBreakdownRow {
+  memberId: number;
+  itemShare: number;
+  taxShare: number;
+  tipShare: number;
+  serviceFeeShare: number;
+  discountShare: number;
+  total: number;
+}
+
+/**
+ * Per-member breakdown for one bill: aggregates every item's share per
+ * member (via computeItemShares), then allocates tax/tip/fee/discount
+ * proportionally to that aggregate — CLAUDE.md money rule 5. This is the
+ * single source of truth for "how was this calculated"; computeBalances and
+ * every server "breakdown" endpoint should call this rather than
+ * re-deriving shares ad hoc.
+ */
+export function computeBillBreakdown(bill: BillForBalance): BillBreakdownRow[] {
+  const aggregateItemShares = new Map<number, number>();
+  for (const item of bill.items) {
+    const shares = computeItemShares(item);
+    for (const [memberId, share] of shares) {
+      aggregateItemShares.set(memberId, (aggregateItemShares.get(memberId) ?? 0) + share);
+    }
+  }
+  if (aggregateItemShares.size === 0) return [];
+
+  const taxShares = allocateProportionally(bill.taxAmount, aggregateItemShares);
+  const tipShares = allocateProportionally(bill.tipAmount, aggregateItemShares);
+  const feeShares = allocateProportionally(bill.serviceFeeAmount, aggregateItemShares);
+  const discountShares = allocateProportionally(bill.discountAmount, aggregateItemShares);
+
+  return [...aggregateItemShares.keys()]
+    .sort((a, b) => a - b)
+    .map((memberId) => {
+      const itemShare = aggregateItemShares.get(memberId)!;
+      const taxShare = taxShares.get(memberId) ?? 0;
+      const tipShare = tipShares.get(memberId) ?? 0;
+      const serviceFeeShare = feeShares.get(memberId) ?? 0;
+      const discountShare = discountShares.get(memberId) ?? 0;
+      return {
+        memberId,
+        itemShare,
+        taxShare,
+        tipShare,
+        serviceFeeShare,
+        discountShare,
+        total: itemShare + taxShare + tipShare + serviceFeeShare - discountShare,
+      };
+    });
 }
 
 /**
@@ -59,29 +151,9 @@ export function computeBalances(
   }
 
   for (const bill of bills) {
-    const aggregateItemShares = new Map<number, number>();
-    for (const item of bill.items) {
-      if (item.memberIds.length === 0) continue;
-      const shares = splitEqually(item.price, item.memberIds);
-      for (const [memberId, share] of shares) {
-        aggregateItemShares.set(memberId, (aggregateItemShares.get(memberId) ?? 0) + share);
-      }
-    }
-    if (aggregateItemShares.size === 0) continue;
-
-    const taxShares = allocateProportionally(bill.taxAmount, aggregateItemShares);
-    const tipShares = allocateProportionally(bill.tipAmount, aggregateItemShares);
-    const feeShares = allocateProportionally(bill.serviceFeeAmount, aggregateItemShares);
-    const discountShares = allocateProportionally(bill.discountAmount, aggregateItemShares);
-
-    for (const [memberId, itemShare] of aggregateItemShares) {
-      const total =
-        itemShare +
-        (taxShares.get(memberId) ?? 0) +
-        (tipShares.get(memberId) ?? 0) +
-        (feeShares.get(memberId) ?? 0) -
-        (discountShares.get(memberId) ?? 0);
-      addDebt(memberId, bill.paidByMemberId, total);
+    const breakdown = computeBillBreakdown(bill);
+    for (const row of breakdown) {
+      addDebt(row.memberId, bill.paidByMemberId, row.total);
     }
   }
 

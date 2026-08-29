@@ -10,6 +10,7 @@ import {
 import { relations } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
+import { percentageGap, customAmountRemaining, isValidRatioPart } from "./lib/money.js";
 
 export const BILL_STATUSES = ["pending", "settled"] as const;
 export const SPLIT_TYPES = ["equal", "percentage", "ratio", "custom"] as const;
@@ -276,11 +277,97 @@ export const insertBillSchema = createInsertSchema(bills, {
   paidByMemberId: true,
 });
 
+// ---------------------------------------------------------------------------
+// Item assignments — one split type per item (the assignment editor has one
+// split-type selector per item, not per person). percentage/ratio/custom
+// each require their own value field; equal requires none.
+// ---------------------------------------------------------------------------
+export const itemAssignmentInputSchema = z
+  .object({
+    memberId: z.number().int().positive(),
+    splitType: z.enum(SPLIT_TYPES),
+    percentage: z.number().int().min(1).max(100).nullish(),
+    ratio: z.number().int().positive().nullish(),
+    customAmount: z.number().int().positive().nullish(),
+  })
+  .superRefine((a, ctx) => {
+    if (a.splitType === "percentage" && a.percentage == null) {
+      ctx.addIssue({ code: "custom", path: ["percentage"], message: "Percentage is required for a percentage split." });
+    }
+    if (a.splitType === "ratio" && a.ratio == null) {
+      ctx.addIssue({ code: "custom", path: ["ratio"], message: "Ratio is required for a ratio split." });
+    }
+    if (a.splitType === "custom" && a.customAmount == null) {
+      ctx.addIssue({ code: "custom", path: ["customAmount"], message: "Custom amount is required for a custom split." });
+    }
+  });
+
+export const billItemInputSchema = z
+  .object({
+    name: z.string().min(1, "Item name is required").max(200),
+    price: z.number().int().positive("Item price must be greater than zero"),
+    quantity: z.number().int().positive().default(1),
+    assignments: z.array(itemAssignmentInputSchema),
+  })
+  .superRefine((item, ctx) => {
+    if (item.assignments.length === 0) return; // unassigned is allowed — flagged in the UI, not rejected
+
+    const splitTypes = new Set(item.assignments.map((a) => a.splitType));
+    if (splitTypes.size > 1) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["assignments"],
+        message: `"${item.name}": all assignments on one item must use the same split type.`,
+      });
+      return;
+    }
+
+    const splitType = item.assignments[0].splitType;
+    if (splitType === "percentage") {
+      const gap = percentageGap(item.assignments.map((a) => a.percentage ?? 0));
+      if (gap !== 0) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["assignments"],
+          message:
+            gap > 0
+              ? `"${item.name}": percentages are ${gap} short of 100.`
+              : `"${item.name}": percentages are ${-gap} over 100.`,
+        });
+      }
+    }
+    if (splitType === "custom") {
+      const remaining = customAmountRemaining(item.assignments.map((a) => a.customAmount ?? 0), item.price);
+      if (remaining !== 0) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["assignments"],
+          message:
+            remaining > 0
+              ? `"${item.name}": ${formatPaiseForMessage(remaining)} left to assign.`
+              : `"${item.name}": custom amounts exceed the item price.`,
+        });
+      }
+    }
+    if (splitType === "ratio") {
+      const invalid = item.assignments.some((a) => !isValidRatioPart(a.ratio ?? 0));
+      if (invalid) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["assignments"],
+          message: `"${item.name}": ratio parts must be positive whole numbers.`,
+        });
+      }
+    }
+  });
+
+function formatPaiseForMessage(paise: number): string {
+  return `₹${(paise / 100).toFixed(2)}`;
+}
+
 export const createBillSchema = insertBillSchema.extend({
   groupId: z.number().int().positive(),
-  splitMemberIds: z
-    .array(z.number().int().positive())
-    .min(1, "Select at least one person to split with"),
+  items: z.array(billItemInputSchema).min(1, "Add at least one item"),
 });
 
 export const updateBillSchema = createBillSchema.partial().extend({
@@ -291,6 +378,9 @@ export const selectBillSchema = createSelectSchema(bills);
 export const selectBillItemSchema = createSelectSchema(billItems);
 export const selectItemAssignmentSchema = createSelectSchema(itemAssignments);
 export const selectSettlementSchema = createSelectSchema(settlements);
+
+export type ItemAssignmentInput = z.infer<typeof itemAssignmentInputSchema>;
+export type BillItemInput = z.infer<typeof billItemInputSchema>;
 
 export type User = z.infer<typeof selectUserSchema>;
 export type Group = z.infer<typeof selectGroupSchema>;

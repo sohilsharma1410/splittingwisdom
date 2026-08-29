@@ -111,3 +111,29 @@ export function allocateProportionally(
   }
   return base;
 }
+
+/**
+ * How far a set of percentage-split inputs is from summing to 100. Zero
+ * means valid; a positive result is the gap still needed, negative means
+ * they've gone over. Used for live "gap to 100" validation in the
+ * assignment editor and re-checked server-side before saving.
+ */
+export function percentageGap(percentages: number[]): number {
+  const sum = percentages.reduce((a, b) => a + b, 0);
+  return 100 - sum;
+}
+
+/**
+ * How far a set of custom-amount inputs (paise) is from summing to the
+ * item's price. Zero means valid; a positive result is the amount still
+ * remaining to allocate, negative means they've gone over.
+ */
+export function customAmountRemaining(customAmountsPaise: number[], itemPricePaise: number): number {
+  const sum = customAmountsPaise.reduce((a, b) => a + b, 0);
+  return itemPricePaise - sum;
+}
+
+/** Ratio split parts must be positive integers (e.g. 2:1:1). */
+export function isValidRatioPart(ratio: number): boolean {
+  return Number.isInteger(ratio) && ratio > 0;
+}

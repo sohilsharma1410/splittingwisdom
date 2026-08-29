@@ -31,7 +31,13 @@ export async function computeGroupBalances(groupId: number): Promise<{
     discountAmount: b.discountAmount,
     items: b.items.map((item) => ({
       price: item.price,
-      memberIds: item.assignments.map((a) => a.memberId),
+      assignments: item.assignments.map((a) => ({
+        memberId: a.memberId,
+        splitType: a.splitType,
+        percentage: a.percentage,
+        ratio: a.ratio,
+        customAmount: a.customAmount,
+      })),
     })),
   }));
   const settlementsForBalance: SettlementForBalance[] = groupSettlements.map((s) => ({

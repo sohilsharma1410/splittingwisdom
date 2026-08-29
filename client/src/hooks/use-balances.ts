@@ -16,6 +16,14 @@ export interface BalancesSummary {
   balances: BalanceSummaryItem[];
 }
 
+export interface ContributingBillItem {
+  itemId: number;
+  name: string;
+  price: number;
+  splitType: "equal" | "percentage" | "ratio" | "custom";
+  share: number;
+}
+
 export interface ContributingBill {
   billId: number;
   description: string;
@@ -25,6 +33,7 @@ export interface ContributingBill {
   payerName: string;
   grandTotal: number;
   theirShare: number;
+  items: ContributingBillItem[];
 }
 
 export interface BalanceDetail {

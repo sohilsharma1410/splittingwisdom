@@ -5,6 +5,9 @@ import {
   paiseToRupeeInput,
   splitEqually,
   allocateProportionally,
+  percentageGap,
+  customAmountRemaining,
+  isValidRatioPart,
 } from "./money.js";
 
 describe("rupeesToPaise / paiseToRupeeInput", () => {
@@ -111,6 +114,47 @@ describe("allocateProportionally", () => {
     const shares = allocateProportionally(0, weights);
     expect(shares.get(1)).toBe(0);
     expect(shares.get(2)).toBe(0);
+  });
+});
+
+describe("percentageGap", () => {
+  it("is zero when percentages sum to exactly 100", () => {
+    expect(percentageGap([34, 33, 33])).toBe(0);
+  });
+
+  it("is positive when short of 100", () => {
+    expect(percentageGap([60])).toBe(40);
+  });
+
+  it("is negative when over 100", () => {
+    expect(percentageGap([70, 40])).toBe(-10);
+  });
+});
+
+describe("customAmountRemaining", () => {
+  it("is zero when amounts sum to exactly the item price", () => {
+    expect(customAmountRemaining([5000, 2000], 7000)).toBe(0);
+  });
+
+  it("is positive when amounts fall short of the item price", () => {
+    expect(customAmountRemaining([3000], 7000)).toBe(4000);
+  });
+
+  it("is negative when amounts exceed the item price", () => {
+    expect(customAmountRemaining([8000], 7000)).toBe(-1000);
+  });
+});
+
+describe("isValidRatioPart", () => {
+  it("accepts positive integers", () => {
+    expect(isValidRatioPart(1)).toBe(true);
+    expect(isValidRatioPart(2)).toBe(true);
+  });
+
+  it("rejects zero, negatives, and non-integers", () => {
+    expect(isValidRatioPart(0)).toBe(false);
+    expect(isValidRatioPart(-1)).toBe(false);
+    expect(isValidRatioPart(1.5)).toBe(false);
   });
 });
 
