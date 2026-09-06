@@ -27,6 +27,7 @@ export interface GroupDetail {
   coverImage: string | null;
   createdBy: number;
   inviteToken: string;
+  isPersonal: boolean;
   createdAt: string;
   updatedAt: string;
   members: GroupMemberDetail[];

@@ -33,7 +33,7 @@ router.get("/", async (req, res) => {
   }
 
   const rows = await db.query.groups.findMany({
-    where: inArray(groups.id, groupIds),
+    where: and(inArray(groups.id, groupIds), eq(groups.isPersonal, false)),
     with: {
       members: true,
       bills: { columns: { id: true, createdAt: true } },

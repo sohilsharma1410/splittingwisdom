@@ -23,15 +23,23 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/query-client";
 import { useGroups, useGroup } from "@/hooks/use-groups";
-import { useCreateBill, useUpdateBill, type BillDetail, type BillItemInput } from "@/hooks/use-bills";
+import {
+  useCreateBill,
+  useUpdateBill,
+  type BillDetail,
+  type BillItemInput,
+  type ItemAssignmentInput,
+} from "@/hooks/use-bills";
 import { useAuth } from "@/hooks/use-auth";
 import { ItemListEditor, itemsSubtotal, type ItemRow } from "@/components/bills/item-list-editor";
+import { AssignmentEditor } from "@/components/bills/assignment-editor";
 import {
   formatPaise,
   rupeesToPaise,
   paiseToRupeeInput,
   splitEqually,
   allocateProportionally,
+  computeBillBreakdown,
 } from "@splittingwisdom/shared";
 
 function safeRupeesToPaise(input: string): number {
@@ -52,12 +60,34 @@ function isQuickSplitShaped(bill: BillDetail): boolean {
   return item.assignments.every((a) => a.splitType === "equal");
 }
 
+const SPLIT_TYPE_LABEL: Record<string, string> = {
+  equal: "Split equally",
+  percentage: "By percentage",
+  ratio: "By ratio",
+  custom: "Custom amounts",
+};
+
+function summarizeAssignment(assignments: ItemAssignmentInput[], totalSelected: number): string {
+  if (assignments.length === 0) return "Unassigned";
+  const label = SPLIT_TYPE_LABEL[assignments[0].splitType] ?? "Split";
+  if (assignments[0].splitType === "equal" && assignments.length === totalSelected) {
+    return `${label}, everyone`;
+  }
+  return `${label}, ${assignments.length} ${assignments.length === 1 ? "person" : "people"}`;
+}
+
 interface BillFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   lockedGroupId?: number;
   editBill?: BillDetail;
 }
+
+/** A group selection is either a real group id, or the "personal" sentinel
+ * meaning "no group — just track this for myself." The server resolves
+ * (and lazily creates) the actual personal group; the client never needs
+ * to know its id ahead of time. */
+type GroupSelection = number | "personal" | null;
 
 export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: BillFormDialogProps) {
   const [, navigate] = useLocation();
@@ -68,8 +98,14 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
   const updateBill = useUpdateBill(editBill?.id ?? -1, editBill?.groupId ?? lockedGroupId ?? -1);
   const isEditing = !!editBill;
 
-  const [groupId, setGroupId] = useState<number | null>(lockedGroupId ?? editBill?.groupId ?? null);
-  const effectiveGroupId = lockedGroupId ?? editBill?.groupId ?? groupId;
+  const [groupSelection, setGroupSelection] = useState<GroupSelection>(lockedGroupId ?? editBill?.groupId ?? null);
+  // Only meaningful for a brand-new bill — an edit's group (personal or
+  // not) is already fully resolved (real group id, real payer, real
+  // per-item assignments already loaded from editBill), so there's nothing
+  // for the server to auto-resolve and no reason to blank out assignments
+  // that are already correct.
+  const isPersonalSelected = !isEditing && groupSelection === "personal";
+  const effectiveGroupId = typeof groupSelection === "number" ? groupSelection : null;
   const { data: groupData } = useGroup(effectiveGroupId ?? -1);
   // Only registered, joined members can participate in a bill — an invited
   // (unlinked) placeholder has no account and no way to see or act on it.
@@ -93,16 +129,23 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
   const [splitMemberIds, setSplitMemberIds] = useState<number[] | null>(null);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
 
-  // Itemized mode — a real item list; items start unassigned (assigned on
-  // Bill Detail afterward). Existing item ids/assignments are carried
-  // forward when editing so untouched items keep their assignments.
+  // Itemized mode — a real item list. Each item defaults to an equal split
+  // among splitMemberIds unless overridden via the inline assignment editor
+  // (existingItemData holds only the overrides, keyed by item row key).
   const [items, setItems] = useState<ItemRow[]>([{ key: crypto.randomUUID(), name: "", price: "", quantity: "1" }]);
-  const [existingItemData, setExistingItemData] = useState<Map<string, BillItemInput["assignments"]>>(new Map());
+  const [existingItemData, setExistingItemData] = useState<Map<string, ItemAssignmentInput[]>>(new Map());
+  const [editingItemKey, setEditingItemKey] = useState<string | null>(null);
   const [showReceiptTotal, setShowReceiptTotal] = useState(false);
   const [receiptTotal, setReceiptTotal] = useState("");
 
+  function getEffectiveAssignments(key: string): ItemAssignmentInput[] {
+    const override = existingItemData.get(key);
+    if (override) return override;
+    return (splitMemberIds ?? []).map((memberId) => ({ memberId, splitType: "equal" as const }));
+  }
+
   function resetForm() {
-    setGroupId(lockedGroupId ?? editBill?.groupId ?? null);
+    setGroupSelection(lockedGroupId ?? editBill?.groupId ?? null);
     setDescription("");
     setMerchant("");
     setBillDate(new Date());
@@ -119,6 +162,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
     setShowMemberPicker(false);
     setItems([{ key: crypto.randomUUID(), name: "", price: "", quantity: "1" }]);
     setExistingItemData(new Map());
+    setEditingItemKey(null);
     setShowReceiptTotal(false);
     setReceiptTotal("");
   }
@@ -148,7 +192,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
     } else {
       setQuickSplit(false);
       const rows: ItemRow[] = [];
-      const carry = new Map<string, BillItemInput["assignments"]>();
+      const carry = new Map<string, ItemAssignmentInput[]>();
       for (const item of editBill.items) {
         const key = crypto.randomUUID();
         rows.push({ key, name: item.name, price: paiseToRupeeInput(item.price), quantity: String(item.quantity) });
@@ -219,6 +263,41 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
   const receiptMismatch =
     showReceiptTotal && receiptTotal.trim() !== "" ? safeRupeesToPaise(receiptTotal) - itemsTotal : 0;
 
+  // Itemized live preview — works the moment items exist, since every item
+  // now has a real (default-or-overridden) assignment from the start.
+  const itemizedPreview = useMemo(() => {
+    if (quickSplit || isPersonalSelected || !payerMemberId) return null;
+    const validRows = items.filter((item) => item.name.trim() && safeRupeesToPaise(item.price) > 0);
+    if (validRows.length === 0) return null;
+
+    const breakdown = computeBillBreakdown({
+      paidByMemberId: payerMemberId,
+      taxAmount: safeRupeesToPaise(taxAmount),
+      tipAmount: safeRupeesToPaise(tipAmount),
+      serviceFeeAmount: safeRupeesToPaise(serviceFeeAmount),
+      discountAmount: safeRupeesToPaise(discountAmount),
+      items: validRows.map((item) => ({
+        price: safeRupeesToPaise(item.price),
+        assignments: getEffectiveAssignments(item.key).map((a) => ({
+          memberId: a.memberId,
+          splitType: a.splitType,
+          percentage: a.percentage ?? null,
+          ratio: a.ratio ?? null,
+          customAmount: a.customAmount ?? null,
+        })),
+      })),
+    });
+    if (breakdown.length === 0) return null;
+
+    const rows = breakdown.map((row) => ({
+      id: row.memberId,
+      name: members.find((m) => m.id === row.memberId)?.displayName ?? "?",
+      total: row.total,
+    }));
+    return { rows, grandTotal: rows.reduce((sum, r) => sum + r.total, 0) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quickSplit, isPersonalSelected, items, existingItemData, splitMemberIds, payerMemberId, taxAmount, tipAmount, serviceFeeAmount, discountAmount, members]);
+
   function toggleSplitMember(id: number) {
     setSplitMemberIds((current) => {
       const list = current ?? [];
@@ -230,7 +309,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
     e.preventDefault();
     setError(null);
 
-    if (!effectiveGroupId) {
+    if (!isPersonalSelected && !effectiveGroupId) {
       setError("Choose a group.");
       return;
     }
@@ -238,7 +317,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
       setError("Description is required.");
       return;
     }
-    if (!payerMemberId) {
+    if (!isPersonalSelected && !payerMemberId) {
       setError("Choose who paid.");
       return;
     }
@@ -252,7 +331,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
         setError("Total amount must be greater than zero.");
         return;
       }
-      if (!splitMemberIds || splitMemberIds.length === 0) {
+      if (!isPersonalSelected && (!splitMemberIds || splitMemberIds.length === 0)) {
         setError("Select at least one person to split with.");
         return;
       }
@@ -262,7 +341,9 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
           name: "Entire bill",
           price: subtotal,
           quantity: 1,
-          assignments: splitMemberIds.map((memberId) => ({ memberId, splitType: "equal" as const })),
+          assignments: isPersonalSelected
+            ? []
+            : (splitMemberIds ?? []).map((memberId) => ({ memberId, splitType: "equal" as const })),
         },
       ];
     } else {
@@ -276,12 +357,12 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
         name: item.name.trim(),
         price: safeRupeesToPaise(item.price),
         quantity: Number(item.quantity || "1"),
-        assignments: existingItemData.get(item.key) ?? [],
+        assignments: isPersonalSelected ? [] : getEffectiveAssignments(item.key),
       }));
     }
 
     const payload = {
-      groupId: effectiveGroupId,
+      groupId: isPersonalSelected ? undefined : (effectiveGroupId ?? undefined),
       description: description.trim(),
       merchant: merchant.trim() || undefined,
       billDate: format(billDate, "yyyy-MM-dd"),
@@ -290,7 +371,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
       tipAmount: safeRupeesToPaise(tipAmount),
       serviceFeeAmount: safeRupeesToPaise(serviceFeeAmount),
       discountAmount: safeRupeesToPaise(discountAmount),
-      paidByMemberId: payerMemberId,
+      paidByMemberId: isPersonalSelected ? undefined : (payerMemberId ?? undefined),
       items: billItems,
     };
 
@@ -311,6 +392,8 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
     }
   }
 
+  const editingItem = editingItemKey ? items.find((i) => i.key === editingItemKey) : null;
+
   return (
     <Dialog
       open={open}
@@ -323,7 +406,11 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
         <DialogHeader>
           <DialogTitle>{isEditing ? "Edit Bill" : "New Bill"}</DialogTitle>
           <DialogDescription>
-            {quickSplit ? "Split a bill equally among selected members." : "Add each item and assign it afterward."}
+            {isPersonalSelected
+              ? "Just for your own tracking — not shared with anyone."
+              : quickSplit
+                ? "Split a bill equally among selected members."
+                : "List each item — split equally by default, override any item below."}
           </DialogDescription>
         </DialogHeader>
 
@@ -332,9 +419,9 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
             <div className="space-y-1.5">
               <Label htmlFor="bill-group">Group</Label>
               <Select
-                value={groupId ? String(groupId) : undefined}
+                value={groupSelection !== null ? String(groupSelection) : undefined}
                 onValueChange={(v) => {
-                  setGroupId(Number(v));
+                  setGroupSelection(v === "personal" ? "personal" : Number(v));
                   setSplitMemberIds(null);
                   setPayerMemberId(null);
                 }}
@@ -343,6 +430,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
                   <SelectValue placeholder="Choose a group" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="personal">Just me (personal)</SelectItem>
                   {(groupsData?.groups ?? []).map((g) => (
                     <SelectItem key={g.id} value={String(g.id)}>
                       {g.name}
@@ -461,9 +549,27 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
           ) : (
             <div className="space-y-2">
               <Label>Items</Label>
-              <ItemListEditor items={items} onChange={setItems} />
+              <ItemListEditor
+                items={items}
+                onChange={setItems}
+                renderExtra={
+                  isPersonalSelected
+                    ? undefined
+                    : (item) => (
+                        <button
+                          type="button"
+                          onClick={() => setEditingItemKey(item.key)}
+                          className="text-xs text-mint hover:underline"
+                        >
+                          {summarizeAssignment(getEffectiveAssignments(item.key), splitMemberIds?.length ?? 0)} · Edit split
+                        </button>
+                      )
+                }
+              />
               <p className="text-xs text-muted-foreground">
-                Items start unassigned — you'll assign who's splitting each one from the bill page.
+                {isPersonalSelected
+                  ? "This is just for your own tracking."
+                  : "Each item splits equally among everyone selected below by default."}
               </p>
             </div>
           )}
@@ -514,7 +620,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
             </div>
           )}
 
-          {quickSplit && effectiveGroupId && members.length <= 1 && (
+          {effectiveGroupId && members.length <= 1 && (
             <div className="space-y-1.5 rounded-lg bg-mint/10 p-3 text-sm">
               <p>It's just you in this group so far — invite others to split with them.</p>
               {groupData?.group.inviteToken && (
@@ -529,7 +635,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
             </div>
           )}
 
-          {quickSplit && effectiveGroupId && members.length > 1 && (
+          {effectiveGroupId && members.length > 1 && (
             <div className="space-y-1.5">
               <Label>Split equally between</Label>
               {!showMemberPicker ? (
@@ -590,7 +696,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
             </div>
           )}
 
-          {quickSplit && quickPreview.rows.length > 0 && safeRupeesToPaise(totalAmount) > 0 && (
+          {quickSplit && quickPreview.rows.length > 0 && safeRupeesToPaise(totalAmount) > 0 && !isPersonalSelected && (
             <div className="space-y-1.5 rounded-lg bg-mint/10 p-3 text-sm">
               <p className="font-medium text-mint">Live preview</p>
               {quickPreview.rows.map((row) => (
@@ -609,6 +715,22 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
             <p role="alert" className="text-sm text-coral">
               Total amount must be greater than zero.
             </p>
+          )}
+
+          {itemizedPreview && (
+            <div className="space-y-1.5 rounded-lg bg-mint/10 p-3 text-sm">
+              <p className="font-medium text-mint">Live preview</p>
+              {itemizedPreview.rows.map((row) => (
+                <div key={row.id} className="flex justify-between">
+                  <span>{row.name}</span>
+                  <span className="tabular-currency">{formatPaise(row.total)}</span>
+                </div>
+              ))}
+              <div className="flex justify-between border-t border-mint/30 pt-1 font-semibold">
+                <span>Total</span>
+                <span className="tabular-currency">{formatPaise(itemizedPreview.grandTotal)}</span>
+              </div>
+            </div>
           )}
 
           {error && (
@@ -630,6 +752,19 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
           </DialogFooter>
         </form>
       </DialogContent>
+
+      {editingItem && (
+        <AssignmentEditor
+          open={!!editingItemKey}
+          onOpenChange={(openNext) => !openNext && setEditingItemKey(null)}
+          item={{ name: editingItem.name || "Item", price: safeRupeesToPaise(editingItem.price) }}
+          members={members}
+          initialAssignments={getEffectiveAssignments(editingItem.key)}
+          onSave={(assignments) =>
+            setExistingItemData((prev) => new Map(prev).set(editingItem.key, assignments))
+          }
+        />
+      )}
     </Dialog>
   );
 }

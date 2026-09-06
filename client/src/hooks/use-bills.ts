@@ -88,7 +88,10 @@ export interface BillItemInput {
 }
 
 export interface CreateBillInput {
-  groupId: number;
+  /** Omit for a personal (no-group) bill — the server resolves/creates the
+   * user's own personal group and fills in the payer and every item's
+   * assignment, since there's only ever one valid answer: the requester. */
+  groupId?: number;
   description: string;
   merchant?: string;
   billDate: string;
@@ -97,7 +100,7 @@ export interface CreateBillInput {
   tipAmount: number;
   serviceFeeAmount: number;
   discountAmount: number;
-  paidByMemberId: number;
+  paidByMemberId?: number;
   items: BillItemInput[];
 }
 
@@ -142,10 +145,12 @@ export function useBill(id: number) {
   });
 }
 
-function invalidateBillEffects(queryClient: ReturnType<typeof useQueryClient>, groupId: number) {
+function invalidateBillEffects(queryClient: ReturnType<typeof useQueryClient>, groupId?: number) {
   queryClient.invalidateQueries({ queryKey: ["groups"] });
-  queryClient.invalidateQueries({ queryKey: ["groups", groupId] });
-  queryClient.invalidateQueries({ queryKey: ["groups", groupId, "bills"] });
+  if (groupId !== undefined) {
+    queryClient.invalidateQueries({ queryKey: ["groups", groupId] });
+    queryClient.invalidateQueries({ queryKey: ["groups", groupId, "bills"] });
+  }
   queryClient.invalidateQueries({ queryKey: ["dashboard"] });
   queryClient.invalidateQueries({ queryKey: ["activity"] });
   queryClient.invalidateQueries({ queryKey: ["balances"] });

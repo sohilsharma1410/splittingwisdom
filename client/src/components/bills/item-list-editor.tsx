@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,9 +27,14 @@ export function itemsSubtotal(items: ItemRow[]): number {
 interface ItemListEditorProps {
   items: ItemRow[];
   onChange: (items: ItemRow[]) => void;
+  /** Optional per-row extra content (e.g. an "Edit split" affordance) —
+   * keeps this component generic while letting bill-specific callers add
+   * bill-specific controls without a name/price/qty-only editor knowing
+   * about assignments. */
+  renderExtra?: (item: ItemRow) => ReactNode;
 }
 
-export function ItemListEditor({ items, onChange }: ItemListEditorProps) {
+export function ItemListEditor({ items, onChange, renderExtra }: ItemListEditorProps) {
   function addRow() {
     onChange([...items, { key: crypto.randomUUID(), name: "", price: "", quantity: "1" }]);
   }
@@ -52,7 +58,8 @@ export function ItemListEditor({ items, onChange }: ItemListEditorProps) {
   return (
     <div className="space-y-2">
       {items.map((item, index) => (
-        <div key={item.key} className="flex items-center gap-2 rounded-lg border border-border p-2">
+        <div key={item.key} className="rounded-lg border border-border p-2">
+        <div className="flex items-center gap-2">
           <div className="flex shrink-0 flex-col">
             <button
               type="button"
@@ -104,6 +111,8 @@ export function ItemListEditor({ items, onChange }: ItemListEditorProps) {
           >
             <Trash2 className="h-4 w-4" aria-hidden="true" />
           </button>
+        </div>
+        {renderExtra && <div className="mt-2 pl-10">{renderExtra(item)}</div>}
         </div>
       ))}
 

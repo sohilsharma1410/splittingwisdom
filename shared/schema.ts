@@ -3,6 +3,7 @@ import {
   serial,
   text,
   integer,
+  boolean,
   timestamp,
   date,
   unique,
@@ -42,6 +43,10 @@ export const groups = pgTable("groups", {
     .notNull()
     .references(() => users.id),
   inviteToken: text("invite_token").notNull().unique(),
+  // A lazily-created, single-member space for a user's own untracked-with-
+  // others bills (Phase 3 §3). Excluded from the Groups list; never has an
+  // invite flow of its own.
+  isPersonal: boolean("is_personal").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -356,7 +361,12 @@ function formatPaiseForMessage(paise: number): string {
 }
 
 export const createBillSchema = insertBillSchema.extend({
-  groupId: z.number().int().positive(),
+  // Both optional: omitting them means "personal bill" — the server
+  // resolves/creates the requester's own personal group and fills in the
+  // payer (and forces every item's assignment to that one person, since
+  // there's no one else it could ever be).
+  groupId: z.number().int().positive().optional(),
+  paidByMemberId: z.number().int().positive().optional(),
   items: z.array(billItemInputSchema).min(1, "Add at least one item"),
 });
 

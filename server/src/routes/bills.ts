@@ -1,11 +1,13 @@
 import { Router } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import {
   createBillSchema,
   updateBillSchema,
   bills,
   billItems,
   itemAssignments,
+  groups,
   groupMembers,
   users,
   billGrandTotal,
@@ -17,6 +19,32 @@ import {
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getMembership } from "../middleware/authorize.js";
+
+/** Finds (or lazily creates) the requester's own personal, single-member
+ * space for untracked-with-others bills. Never has an invite flow — it's
+ * excluded from the Groups list entirely (GET /api/groups filters it out). */
+async function getOrCreatePersonalGroupId(userId: number): Promise<number> {
+  const existing = await db.query.groups.findFirst({
+    where: and(eq(groups.createdBy, userId), eq(groups.isPersonal, true)),
+  });
+  if (existing) return existing.id;
+
+  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  const newGroup = await db.transaction(async (tx) => {
+    const [group] = await tx
+      .insert(groups)
+      .values({
+        name: "Personal",
+        createdBy: userId,
+        inviteToken: nanoid(16),
+        isPersonal: true,
+      })
+      .returning();
+    await tx.insert(groupMembers).values({ groupId: group.id, userId, displayName: user!.displayName });
+    return group;
+  });
+  return newGroup.id;
+}
 
 const router = Router();
 router.use(requireAuth);
@@ -184,16 +212,53 @@ router.post("/", async (req, res) => {
   }
   const input = parsed.data;
 
-  const membership = await getMembership(req.session.userId!, input.groupId);
-  if (!membership) {
-    res.status(404).json({ error: { message: "Group not found." } });
-    return;
+  // No groupId means "personal bill" — resolve (or lazily create) the
+  // requester's own single-member space instead of a real shared group.
+  let groupId: number;
+  let isPersonalGroup: boolean;
+  if (input.groupId) {
+    const membership = await getMembership(req.session.userId!, input.groupId);
+    if (!membership) {
+      res.status(404).json({ error: { message: "Group not found." } });
+      return;
+    }
+    groupId = input.groupId;
+    isPersonalGroup = false;
+  } else {
+    groupId = await getOrCreatePersonalGroupId(req.session.userId!);
+    isPersonalGroup = true;
   }
 
-  const validMemberIds = await loadGroupMemberIds(input.groupId);
-  const referencedIds = memberIdsIn(input.items);
+  const validMemberIds = await loadGroupMemberIds(groupId);
+
+  // A personal group has exactly one valid member: the requester. Never
+  // trust a client-supplied payer/assignment for it — resolve server-side.
+  let paidByMemberId = input.paidByMemberId;
+  if (!paidByMemberId) {
+    if (!isPersonalGroup) {
+      res.status(400).json({ error: { message: "Choose who paid." } });
+      return;
+    }
+    const myMembership = await db.query.groupMembers.findFirst({
+      where: and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, req.session.userId!)),
+    });
+    if (!myMembership) {
+      res.status(400).json({ error: { message: "Could not resolve who paid." } });
+      return;
+    }
+    paidByMemberId = myMembership.id;
+  }
+
+  const itemsToInsert: BillItemInput[] = isPersonalGroup
+    ? input.items.map((item) => ({
+        ...item,
+        assignments: [{ memberId: paidByMemberId!, splitType: "equal" as const }],
+      }))
+    : input.items;
+
+  const referencedIds = memberIdsIn(itemsToInsert);
   const invalid = [...referencedIds].some((id) => !validMemberIds.has(id));
-  if (invalid || !validMemberIds.has(input.paidByMemberId)) {
+  if (invalid || !validMemberIds.has(paidByMemberId)) {
     res.status(400).json({ error: { message: "Selected members must belong to this group." } });
     return;
   }
@@ -202,7 +267,7 @@ router.post("/", async (req, res) => {
     const [newBill] = await tx
       .insert(bills)
       .values({
-        groupId: input.groupId,
+        groupId,
         description: input.description,
         merchant: input.merchant ?? null,
         billDate: input.billDate,
@@ -211,13 +276,13 @@ router.post("/", async (req, res) => {
         tipAmount: input.tipAmount ?? 0,
         serviceFeeAmount: input.serviceFeeAmount ?? 0,
         discountAmount: input.discountAmount ?? 0,
-        paidByMemberId: input.paidByMemberId,
+        paidByMemberId,
         createdByUserId: req.session.userId!,
       })
       .returning();
 
-    for (let i = 0; i < input.items.length; i++) {
-      const itemInput = input.items[i];
+    for (let i = 0; i < itemsToInsert.length; i++) {
+      const itemInput = itemsToInsert[i];
       const [item] = await tx
         .insert(billItems)
         .values({

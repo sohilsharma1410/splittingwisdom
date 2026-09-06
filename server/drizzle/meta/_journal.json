@@ -8,6 +8,13 @@
       "when": 1787025163154,
       "tag": "0000_strong_talon",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788721605114,
+      "tag": "0001_remarkable_steel_serpent",
+      "breakpoints": true
     }
   ]
 }

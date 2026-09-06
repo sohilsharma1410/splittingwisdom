@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, Link } from "wouter";
 import { format } from "date-fns";
 import { parseDateOnly } from "@/lib/date";
-import { Pencil, Trash2, ChevronDown, Receipt, AlertTriangle, Users } from "lucide-react";
+import { Pencil, Trash2, ChevronDown, Receipt } from "lucide-react";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -70,7 +70,6 @@ export default function BillDetail() {
 
   const { bill } = data;
   const billDateLocal = parseDateOnly(bill.billDate);
-  const assignedCount = bill.itemCount - bill.unassignedItemCount;
   const totalAssignedItemShare = bill.breakdown.reduce((sum, row) => sum + row.itemShare, 0);
 
   async function saveItemAssignments(itemId: number, assignments: ItemAssignmentInput[]) {
@@ -82,21 +81,6 @@ export default function BillDetail() {
       toast({ title: "Assignment saved", variant: "success" });
     } catch {
       toast({ title: "Couldn't save assignment", variant: "error" });
-    }
-  }
-
-  async function assignAllEqually() {
-    const allMemberIds = groupMembers.map((m) => m.id);
-    const nextItems: BillItemInput[] = bill.items.map((item) => {
-      const input = itemToInput(item);
-      if (input.assignments.length > 0) return input;
-      return { ...input, assignments: allMemberIds.map((memberId) => ({ memberId, splitType: "equal" as const })) };
-    });
-    try {
-      await updateBill.mutateAsync({ items: nextItems });
-      toast({ title: "Unassigned items split equally", variant: "success" });
-    } catch {
-      toast({ title: "Couldn't update assignments", variant: "error" });
     }
   }
 
@@ -142,33 +126,7 @@ export default function BillDetail() {
       </section>
 
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Items</h2>
-          <span className="text-sm text-muted-foreground">
-            {assignedCount} of {bill.itemCount} assigned
-          </span>
-        </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-foreground/10">
-          <div
-            className="h-full rounded-full bg-mint transition-all"
-            style={{ width: bill.itemCount > 0 ? `${(assignedCount / bill.itemCount) * 100}%` : "0%" }}
-          />
-        </div>
-
-        {bill.unassignedItemCount > 0 && (
-          <div className="flex flex-col items-start gap-3 rounded-lg border border-coral/30 bg-coral/10 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-            <span className="flex items-center gap-2 text-coral">
-              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-              {bill.unassignedItemCount} item{bill.unassignedItemCount === 1 ? "" : "s"} not assigned yet — excluded
-              from balances until assigned.
-            </span>
-            <Button size="sm" variant="outline" onClick={assignAllEqually} disabled={updateBill.isPending}>
-              <Users className="h-3.5 w-3.5" aria-hidden="true" />
-              Assign all equally
-            </Button>
-          </div>
-        )}
-
+        <h2 className="text-lg font-semibold">Items</h2>
         <div className="divide-y divide-border rounded-xl border border-border bg-surface">
           {bill.items.map((item) => (
             <ItemRow key={item.id} item={item} onEdit={() => setAssigningItem(item)} />
