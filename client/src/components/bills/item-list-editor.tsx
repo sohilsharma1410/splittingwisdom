@@ -53,24 +53,24 @@ export function ItemListEditor({ items, onChange }: ItemListEditorProps) {
     <div className="space-y-2">
       {items.map((item, index) => (
         <div key={item.key} className="flex items-center gap-2 rounded-lg border border-border p-2">
-          <div className="flex flex-col">
+          <div className="flex shrink-0 flex-col">
             <button
               type="button"
               onClick={() => move(index, -1)}
               disabled={index === 0}
               aria-label={`Move ${item.name || "item"} up`}
-              className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-foreground/5 hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
             >
-              <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
+              <ArrowUp className="h-4 w-4" aria-hidden="true" />
             </button>
             <button
               type="button"
               onClick={() => move(index, 1)}
               disabled={index === items.length - 1}
               aria-label={`Move ${item.name || "item"} down`}
-              className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-foreground/5 hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
             >
-              <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
+              <ArrowDown className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
           <Input

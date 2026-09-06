@@ -63,6 +63,10 @@
     color: var(--color-foreground);
     font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
+    /* Stops an in-progress scroll/drag near the top of a page (e.g. tapping
+       a field right after the keyboard shifts the layout) from triggering
+       the browser's native pull-to-refresh on mobile Chrome. */
+    overscroll-behavior-y: contain;
   }
   h1,
   h2,

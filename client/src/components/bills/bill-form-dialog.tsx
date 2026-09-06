@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { parseDateOnly } from "@/lib/date";
+import { cn } from "@/lib/utils";
 import { CalendarIcon, ChevronDown, Loader2 } from "lucide-react";
 import {
   Dialog,
@@ -413,14 +414,34 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
             </div>
           )}
 
-          <div className="flex items-center justify-between rounded-lg border border-border p-3">
-            <div>
-              <p className="text-sm font-medium">Quick split</p>
-              <p className="text-xs text-muted-foreground">One amount, split equally</p>
+          <div className="space-y-1.5">
+            <Label>How do you want to enter this?</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setQuickSplit(true)}
+                aria-pressed={quickSplit}
+                className={cn(
+                  "rounded-lg border p-3 text-left transition-colors",
+                  quickSplit ? "border-mint bg-mint/10" : "border-border hover:bg-foreground/5",
+                )}
+              >
+                <p className={cn("text-sm font-medium", quickSplit && "text-mint")}>Quick Split</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">One total, split equally</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickSplit(false)}
+                aria-pressed={!quickSplit}
+                className={cn(
+                  "rounded-lg border p-3 text-left transition-colors",
+                  !quickSplit ? "border-mint bg-mint/10" : "border-border hover:bg-foreground/5",
+                )}
+              >
+                <p className={cn("text-sm font-medium", !quickSplit && "text-mint")}>Itemize</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">List items, assign each one</p>
+              </button>
             </div>
-            <Button type="button" variant={quickSplit ? "default" : "outline"} size="sm" onClick={() => setQuickSplit((q) => !q)}>
-              {quickSplit ? "On" : "Itemize instead"}
-            </Button>
           </div>
 
           {quickSplit ? (
@@ -447,14 +468,26 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
           <button
             type="button"
             onClick={() => setShowCharges((s) => !s)}
-            className="flex items-center gap-1.5 text-sm font-medium text-mint"
+            className="flex w-full items-center justify-between rounded-lg border border-border p-3 text-left hover:bg-foreground/5"
             aria-expanded={showCharges}
           >
+            <div>
+              <p className="text-sm font-medium">Tax, tip &amp; discount</p>
+              <p className="text-xs text-muted-foreground">
+                {(() => {
+                  const total =
+                    safeRupeesToPaise(taxAmount) +
+                    safeRupeesToPaise(tipAmount) +
+                    safeRupeesToPaise(serviceFeeAmount) -
+                    safeRupeesToPaise(discountAmount);
+                  return total !== 0 ? `${formatPaise(total)} added` : "None added — optional";
+                })()}
+              </p>
+            </div>
             <ChevronDown
-              className={`h-4 w-4 transition-transform ${showCharges ? "rotate-180" : ""}`}
+              className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${showCharges ? "rotate-180" : ""}`}
               aria-hidden="true"
             />
-            Add tax & charges
           </button>
 
           {showCharges && (
@@ -539,7 +572,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
             </div>
           )}
 
-          {quickSplit && quickPreview.rows.length > 0 && (
+          {quickSplit && quickPreview.rows.length > 0 && safeRupeesToPaise(totalAmount) > 0 && (
             <div className="space-y-1.5 rounded-lg bg-mint/10 p-3 text-sm">
               <p className="font-medium text-mint">Live preview</p>
               {quickPreview.rows.map((row) => (

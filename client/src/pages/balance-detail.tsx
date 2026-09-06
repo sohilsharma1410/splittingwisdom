@@ -67,11 +67,12 @@ export default function BalanceDetail() {
               : `${isOwedToMe ? "Owes you" : "You owe"} ${formatPaise(Math.abs(data.netAmount))}`}
           </p>
         </div>
-        <span title="Settlements arrive in a later update" className="ml-auto">
-          <Button variant="coral" disabled>
+        <div className="ml-auto flex flex-col items-end gap-1">
+          <Button variant="outline" disabled className="text-muted-foreground">
             Settle Up
           </Button>
-        </span>
+          <p className="text-xs text-muted-foreground">Coming soon</p>
+        </div>
       </header>
 
       <section className="space-y-3">
