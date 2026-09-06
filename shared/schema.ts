@@ -245,18 +245,8 @@ export const insertGroupSchema = createInsertSchema(groups, {
   name: (schema) => schema.min(1, "Group name is required").max(100),
 }).pick({ name: true, coverImage: true });
 
-export const createGroupSchema = insertGroupSchema.extend({
-  memberNames: z
-    .array(z.string().min(1).max(80))
-    .max(50, "That's a lot of members — split into smaller groups"),
-});
-
 export const selectGroupSchema = createSelectSchema(groups);
 export const selectGroupMemberSchema = createSelectSchema(groupMembers);
-
-export const addMemberSchema = z.object({
-  displayName: z.string().min(1, "Name is required").max(80),
-});
 
 export const insertBillSchema = createInsertSchema(bills, {
   description: (schema) => schema.min(1, "Description is required").max(200),
@@ -391,6 +381,5 @@ export type ItemAssignment = z.infer<typeof selectItemAssignmentSchema>;
 export type Settlement = z.infer<typeof selectSettlementSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
-export type CreateGroupInput = z.infer<typeof createGroupSchema>;
 export type CreateBillInput = z.infer<typeof createBillSchema>;
 export type UpdateBillInput = z.infer<typeof updateBillSchema>;

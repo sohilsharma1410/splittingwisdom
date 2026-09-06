@@ -71,7 +71,9 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
   const [groupId, setGroupId] = useState<number | null>(lockedGroupId ?? editBill?.groupId ?? null);
   const effectiveGroupId = lockedGroupId ?? editBill?.groupId ?? groupId;
   const { data: groupData } = useGroup(effectiveGroupId ?? -1);
-  const members = groupData?.group.members ?? [];
+  // Only registered, joined members can participate in a bill — an invited
+  // (unlinked) placeholder has no account and no way to see or act on it.
+  const members = (groupData?.group.members ?? []).filter((m) => m.isLinked);
 
   const [description, setDescription] = useState("");
   const [merchant, setMerchant] = useState("");
@@ -168,12 +170,13 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
   }, [open, editBill]);
 
   // Default payer + split members once this group's member list loads (create mode only).
+  // Only linked members are eligible — an invited placeholder can't pay or be split with.
   useEffect(() => {
     if (isEditing || !groupData || splitMemberIds !== null) return;
-    setSplitMemberIds(groupData.group.members.map((m) => m.id));
-    const myMember = groupData.group.members.find((m) => m.userId === user?.id);
-    setPayerMemberId(myMember?.id ?? groupData.group.members[0]?.id ?? null);
-  }, [groupData, splitMemberIds, user, isEditing]);
+    setSplitMemberIds(members.map((m) => m.id));
+    const myMember = members.find((m) => m.userId === user?.id);
+    setPayerMemberId(myMember?.id ?? members[0]?.id ?? null);
+  }, [groupData, members, splitMemberIds, user, isEditing]);
 
   // When editing a bill that isn't split among everyone, show who's excluded
   // right away instead of hiding it behind the summary.
@@ -511,7 +514,22 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
             </div>
           )}
 
-          {quickSplit && effectiveGroupId && (
+          {quickSplit && effectiveGroupId && members.length <= 1 && (
+            <div className="space-y-1.5 rounded-lg bg-mint/10 p-3 text-sm">
+              <p>It's just you in this group so far — invite others to split with them.</p>
+              {groupData?.group.inviteToken && (
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(`${window.location.origin}/join/${groupData.group.inviteToken}`)}
+                  className="font-medium text-mint hover:underline"
+                >
+                  Copy invite link
+                </button>
+              )}
+            </div>
+          )}
+
+          {quickSplit && effectiveGroupId && members.length > 1 && (
             <div className="space-y-1.5">
               <Label>Split equally between</Label>
               {!showMemberPicker ? (

@@ -1,10 +1,8 @@
 import { Router } from "express";
-import { eq, inArray, and, isNull, ilike } from "drizzle-orm";
+import { eq, inArray, and, isNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
-  createGroupSchema,
   insertGroupSchema,
-  addMemberSchema,
   groups,
   groupMembers,
   users,
@@ -70,15 +68,16 @@ router.get("/", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/groups — create a group with the creator + name-based members
+// POST /api/groups — create a group with the creator as the sole member.
+// Everyone else joins via the invite link (no free-text member entry).
 // ---------------------------------------------------------------------------
 router.post("/", async (req, res) => {
-  const parsed = createGroupSchema.safeParse(req.body);
+  const parsed = insertGroupSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: { message: parsed.error.issues[0].message } });
     return;
   }
-  const { name, coverImage, memberNames } = parsed.data;
+  const { name, coverImage } = parsed.data;
 
   const currentUser = await db.query.users.findFirst({
     where: eq(users.id, req.session.userId!),
@@ -87,14 +86,6 @@ router.post("/", async (req, res) => {
     res.status(401).json({ error: { message: "You need to be logged in." } });
     return;
   }
-
-  const seen = new Set<string>([currentUser.displayName.trim().toLowerCase()]);
-  const dedupedNames = memberNames.filter((n) => {
-    const key = n.trim().toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 
   const group = await db.transaction(async (tx) => {
     const [newGroup] = await tx
@@ -107,10 +98,9 @@ router.post("/", async (req, res) => {
       })
       .returning();
 
-    await tx.insert(groupMembers).values([
-      { groupId: newGroup.id, userId: currentUser.id, displayName: currentUser.displayName },
-      ...dedupedNames.map((displayName) => ({ groupId: newGroup.id, displayName })),
-    ]);
+    await tx
+      .insert(groupMembers)
+      .values({ groupId: newGroup.id, userId: currentUser.id, displayName: currentUser.displayName });
 
     return newGroup;
   });
@@ -211,37 +201,6 @@ router.delete("/:id", requireGroupMember("id"), async (req, res) => {
 
   await db.delete(groups).where(eq(groups.id, res.locals.groupId!));
   res.json({ data: { success: true } });
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/groups/:id/members — add a name-based member
-// ---------------------------------------------------------------------------
-router.post("/:id/members", requireGroupMember("id"), async (req, res) => {
-  const parsed = addMemberSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: { message: parsed.error.issues[0].message } });
-    return;
-  }
-
-  const existing = await db.query.groupMembers.findFirst({
-    where: and(
-      eq(groupMembers.groupId, res.locals.groupId!),
-      ilike(groupMembers.displayName, parsed.data.displayName.trim()),
-    ),
-  });
-  if (existing) {
-    res
-      .status(409)
-      .json({ error: { message: `${parsed.data.displayName} is already in this group.` } });
-    return;
-  }
-
-  const [member] = await db
-    .insert(groupMembers)
-    .values({ groupId: res.locals.groupId!, displayName: parsed.data.displayName })
-    .returning();
-
-  res.status(201).json({ data: { member } });
 });
 
 // ---------------------------------------------------------------------------

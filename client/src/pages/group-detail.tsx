@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { InviteLinkCard } from "@/components/groups/invite-link-card";
-import { AddMemberForm } from "@/components/groups/add-member-form";
 import { RenameGroupDialog } from "@/components/groups/rename-group-dialog";
 import { DeleteGroupAlert } from "@/components/groups/delete-group-alert";
 import { RemoveMemberAlert } from "@/components/groups/remove-member-alert";
@@ -125,11 +124,10 @@ export default function GroupDetail() {
             </div>
           ))}
         </div>
-        <AddMemberForm groupId={group.id} />
       </section>
 
       <section>
-        <InviteLinkCard inviteToken={group.inviteToken} />
+        <InviteLinkCard inviteToken={group.inviteToken} groupName={group.name} />
       </section>
 
       <section className="space-y-3">

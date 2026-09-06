@@ -64,7 +64,7 @@ export function useInvitePreview(token: string, enabled = true) {
 export function useCreateGroup() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { name: string; memberNames: string[] }) =>
+    mutationFn: (input: { name: string }) =>
       apiFetch<{ group: { id: number } }>("/api/groups", {
         method: "POST",
         body: JSON.stringify(input),
@@ -94,21 +94,6 @@ export function useDeleteGroup(id: number) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groups"] });
       queryClient.removeQueries({ queryKey: ["groups", id] });
-    },
-  });
-}
-
-export function useAddMember(id: number) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (displayName: string) =>
-      apiFetch(`/api/groups/${id}/members`, {
-        method: "POST",
-        body: JSON.stringify({ displayName }),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["groups", id] });
-      queryClient.invalidateQueries({ queryKey: ["groups"] });
     },
   });
 }

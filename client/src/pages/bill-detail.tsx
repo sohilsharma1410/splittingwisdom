@@ -52,7 +52,8 @@ export default function BillDetail() {
 
   const updateBill = useUpdateBill(billId, data?.bill.groupId ?? -1);
   const { data: groupData } = useGroup(data?.bill.groupId ?? -1);
-  const groupMembers = groupData?.group.members ?? [];
+  // Only registered, joined members can be assigned to a bill item.
+  const groupMembers = (groupData?.group.members ?? []).filter((m) => m.isLinked);
 
   if (isLoading) {
     return (

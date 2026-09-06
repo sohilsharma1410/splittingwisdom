@@ -1,6 +1,6 @@
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useLocation } from "wouter";
-import { X, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -28,39 +28,11 @@ export function CreateGroupDialog({
   const createGroup = useCreateGroup();
 
   const [name, setName] = useState("");
-  const [memberInput, setMemberInput] = useState("");
-  const [members, setMembers] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
     setName("");
-    setMemberInput("");
-    setMembers([]);
     setError(null);
-  }
-
-  function addMember() {
-    const trimmed = memberInput.trim();
-    if (!trimmed) return;
-    const exists = members.some((m) => m.toLowerCase() === trimmed.toLowerCase());
-    if (exists) {
-      setError(`"${trimmed}" is already added.`);
-      return;
-    }
-    setMembers((current) => [...current, trimmed]);
-    setMemberInput("");
-    setError(null);
-  }
-
-  function handleMemberKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      addMember();
-    }
-  }
-
-  function removeMember(name: string) {
-    setMembers((current) => current.filter((m) => m !== name));
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -73,7 +45,7 @@ export function CreateGroupDialog({
     }
 
     try {
-      const result = await createGroup.mutateAsync({ name: name.trim(), memberNames: members });
+      const result = await createGroup.mutateAsync({ name: name.trim() });
       toast({ title: "Group created", variant: "success" });
       onOpenChange(false);
       reset();
@@ -95,7 +67,7 @@ export function CreateGroupDialog({
         <DialogHeader>
           <DialogTitle>Create a group</DialogTitle>
           <DialogDescription>
-            Add the people you're splitting expenses with. You can add more later.
+            Give it a name — you can invite people once it's created.
           </DialogDescription>
         </DialogHeader>
 
@@ -109,42 +81,6 @@ export function CreateGroupDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="member-input">Members</Label>
-            <div className="flex gap-2">
-              <Input
-                id="member-input"
-                placeholder="Type a name and press Enter"
-                value={memberInput}
-                onChange={(e) => setMemberInput(e.target.value)}
-                onKeyDown={handleMemberKeyDown}
-              />
-              <Button type="button" variant="outline" onClick={addMember}>
-                Add
-              </Button>
-            </div>
-            {members.length > 0 && (
-              <ul className="flex flex-wrap gap-2 pt-2" aria-label="Added members">
-                {members.map((m) => (
-                  <li
-                    key={m}
-                    className="flex items-center gap-1.5 rounded-full bg-mint/15 py-1 pl-3 pr-1.5 text-sm text-mint"
-                  >
-                    {m}
-                    <button
-                      type="button"
-                      onClick={() => removeMember(m)}
-                      aria-label={`Remove ${m}`}
-                      className="rounded-full p-0.5 hover:bg-mint/20"
-                    >
-                      <X className="h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
           </div>
 
           {error && (
