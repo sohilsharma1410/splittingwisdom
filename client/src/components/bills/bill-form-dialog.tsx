@@ -555,21 +555,27 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
                 renderExtra={
                   isPersonalSelected
                     ? undefined
-                    : (item) => (
-                        <button
-                          type="button"
-                          onClick={() => setEditingItemKey(item.key)}
-                          className="text-xs text-mint hover:underline"
-                        >
-                          {summarizeAssignment(getEffectiveAssignments(item.key), splitMemberIds?.length ?? 0)} · Edit split
-                        </button>
-                      )
+                    : members.length === 0
+                      ? () => (
+                          <p className="text-xs text-muted-foreground">Choose a group above to assign this item.</p>
+                        )
+                      : (item) => (
+                          <button
+                            type="button"
+                            onClick={() => setEditingItemKey(item.key)}
+                            className="text-xs text-mint hover:underline"
+                          >
+                            {summarizeAssignment(getEffectiveAssignments(item.key), splitMemberIds?.length ?? 0)} · Edit split
+                          </button>
+                        )
                 }
               />
               <p className="text-xs text-muted-foreground">
                 {isPersonalSelected
                   ? "This is just for your own tracking."
-                  : "Each item splits equally among everyone selected below by default."}
+                  : members.length === 0
+                    ? "Choose a group above, then each item will split equally among everyone selected — override any item individually."
+                    : "Each item splits equally among everyone selected below by default."}
               </p>
             </div>
           )}
@@ -637,7 +643,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
 
           {effectiveGroupId && members.length > 1 && (
             <div className="space-y-1.5">
-              <Label>Split equally between</Label>
+              <Label>{quickSplit ? "Split equally between" : "People on this bill"}</Label>
               {!showMemberPicker ? (
                 <button
                   type="button"

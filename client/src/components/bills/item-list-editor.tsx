@@ -58,7 +58,7 @@ export function ItemListEditor({ items, onChange, renderExtra }: ItemListEditorP
   return (
     <div className="space-y-2">
       {items.map((item, index) => (
-        <div key={item.key} className="rounded-lg border border-border p-2">
+        <div key={item.key} className="space-y-2 rounded-lg border border-border p-2">
         <div className="flex items-center gap-2">
           <div className="flex shrink-0 flex-col">
             <button
@@ -87,22 +87,6 @@ export function ItemListEditor({ items, onChange, renderExtra }: ItemListEditorP
             className="min-w-0 flex-1"
             aria-label="Item name"
           />
-          <Input
-            type="text"
-            inputMode="numeric"
-            placeholder="1"
-            value={item.quantity}
-            onChange={(e) => updateRow(item.key, { quantity: e.target.value.replace(/[^0-9]/g, "") })}
-            className="w-14 text-center"
-            aria-label="Quantity"
-          />
-          <CurrencyInput
-            placeholder="0.00"
-            value={item.price}
-            onChange={(e) => updateRow(item.key, { price: e.target.value })}
-            className="w-28"
-            aria-label="Item price"
-          />
           <button
             type="button"
             onClick={() => removeRow(item.key)}
@@ -112,7 +96,25 @@ export function ItemListEditor({ items, onChange, renderExtra }: ItemListEditorP
             <Trash2 className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
-        {renderExtra && <div className="mt-2 pl-10">{renderExtra(item)}</div>}
+        <div className="flex items-center gap-2 pl-10">
+          <Input
+            type="text"
+            inputMode="numeric"
+            placeholder="1"
+            value={item.quantity}
+            onChange={(e) => updateRow(item.key, { quantity: e.target.value.replace(/[^0-9]/g, "") })}
+            className="w-16 text-center"
+            aria-label="Quantity"
+          />
+          <CurrencyInput
+            placeholder="0.00"
+            value={item.price}
+            onChange={(e) => updateRow(item.key, { price: e.target.value })}
+            className="flex-1"
+            aria-label="Item price"
+          />
+        </div>
+        {renderExtra && <div className="pl-10">{renderExtra(item)}</div>}
         </div>
       ))}
 
