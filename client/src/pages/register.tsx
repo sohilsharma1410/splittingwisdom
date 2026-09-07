@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Scale, Loader2 } from "lucide-react";
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch, ApiError } from "@/lib/query-client";
 import { useToast } from "@/components/ui/toast";
-import type { AuthUser } from "@/hooks/use-auth";
+import { useAuth, type AuthUser } from "@/hooks/use-auth";
 
 export default function Register() {
   const [, navigate] = useLocation();
@@ -17,10 +17,19 @@ export default function Register() {
   const redirectTo = nextPath?.startsWith("/") ? nextPath : "/";
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [registered, setRegistered] = useState(false);
+
+  // See login.tsx — navigate only once useAuth() itself reports the fresh
+  // user, not synchronously inside the mutation callback, so ProtectedRoute
+  // never renders the redirect-to-login branch on stale data first.
+  useEffect(() => {
+    if (registered && user) navigate(redirectTo);
+  }, [registered, user, navigate, redirectTo]);
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -28,10 +37,14 @@ export default function Register() {
         method: "POST",
         body: JSON.stringify({ email, displayName, password }),
       }),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      // The app's own startup fetch of ["auth", "me"] (expected to 401 while
+      // logged out) can still be in flight or retrying here. Cancel it first
+      // so a slow/stale response can't overwrite this with logged-out.
+      await queryClient.cancelQueries({ queryKey: ["auth", "me"] });
       queryClient.setQueryData(["auth", "me"], data);
       toast({ title: `Welcome, ${data.user.displayName}`, variant: "success" });
-      navigate(redirectTo);
+      setRegistered(true);
     },
     onError: (err) => {
       setFormError(

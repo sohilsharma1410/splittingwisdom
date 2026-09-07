@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { Search, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,7 @@ import { InitialsAvatar } from "@/components/ui/avatar";
 import { useSearchPeople, type Person } from "@/hooks/use-people";
 
 interface PersonSearchProps {
-  onAdd: (person: Person) => void;
+  onAdd: (person: Person) => void | Promise<void>;
   excludeIds: number[];
   knownPeople?: Person[];
 }
@@ -15,8 +15,17 @@ export function PersonSearch({ onAdd, excludeIds, knownPeople = [] }: PersonSear
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Person[] | null>(null);
   const search = useSearchPeople();
+  // Hidden the instant a chip/row is clicked — before the add request even
+  // resolves — so there's no lag where a slow request looks like nothing
+  // happened and invites a second (or third) click. Reverted only if the
+  // add actually fails. The ref is the actual re-entrancy guard (mutated
+  // synchronously, immune to React's render batching across rapid clicks
+  // dispatched in the same tick); pendingIds is state purely so the UI
+  // re-renders to reflect it.
+  const pendingRef = useRef<Set<number>>(new Set());
+  const [pendingIds, setPendingIds] = useState<Set<number>>(new Set());
 
-  const shortlist = knownPeople.filter((p) => !excludeIds.includes(p.id));
+  const shortlist = knownPeople.filter((p) => !excludeIds.includes(p.id) && !pendingIds.has(p.id));
 
   async function handleSearch(e: FormEvent) {
     e.preventDefault();
@@ -25,9 +34,21 @@ export function PersonSearch({ onAdd, excludeIds, knownPeople = [] }: PersonSear
     setResults(res.people.filter((p) => !excludeIds.includes(p.id)));
   }
 
-  function handleAdd(person: Person) {
-    onAdd(person);
-    setResults((r) => r?.filter((p) => p.id !== person.id) ?? null);
+  async function handleAdd(person: Person) {
+    if (pendingRef.current.has(person.id)) return;
+    pendingRef.current.add(person.id);
+    setPendingIds((s) => new Set(s).add(person.id));
+    try {
+      await onAdd(person);
+      setResults((r) => r?.filter((p) => p.id !== person.id) ?? null);
+    } catch {
+      pendingRef.current.delete(person.id);
+      setPendingIds((s) => {
+        const next = new Set(s);
+        next.delete(person.id);
+        return next;
+      });
+    }
   }
 
   return (
@@ -84,8 +105,18 @@ export function PersonSearch({ onAdd, excludeIds, knownPeople = [] }: PersonSear
                   <InitialsAvatar name={p.displayName} className="h-7 w-7 text-xs" />
                   <span className="text-sm font-medium">{p.displayName}</span>
                 </div>
-                <Button type="button" size="sm" variant="outline" onClick={() => handleAdd(p)}>
-                  Add
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={pendingIds.has(p.id)}
+                  onClick={() => handleAdd(p)}
+                >
+                  {pendingIds.has(p.id) ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                  ) : (
+                    "Add"
+                  )}
                 </Button>
               </div>
             ))}

@@ -7,6 +7,7 @@ import {
   groupMembers,
   users,
   bills,
+  settlements,
   billGrandTotal,
 } from "@splittingwisdom/shared";
 import { db } from "../db.js";
@@ -200,7 +201,18 @@ router.delete("/:id", requireGroupMember("id"), async (req, res) => {
     return;
   }
 
-  await db.delete(groups).where(eq(groups.id, res.locals.groupId!));
+  const groupId = res.locals.groupId!;
+  await db.transaction(async (tx) => {
+    // item_assignments.memberId and settlements' member columns intentionally
+    // don't cascade from group_members (removing a single member with bill
+    // history must be blocked, not silently corrupt their share) — so
+    // deleting the whole group must clear bills/settlements (which cascade
+    // down to item_assignments) *before* the group delete below cascades to
+    // group_members, or that cascade hits the same protective constraint.
+    await tx.delete(bills).where(eq(bills.groupId, groupId));
+    await tx.delete(settlements).where(eq(settlements.groupId, groupId));
+    await tx.delete(groups).where(eq(groups.id, groupId));
+  });
   res.json({ data: { success: true } });
 });
 

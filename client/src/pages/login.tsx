@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Scale, Loader2 } from "lucide-react";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch, ApiError } from "@/lib/query-client";
 import { useToast } from "@/components/ui/toast";
-import type { AuthUser } from "@/hooks/use-auth";
+import { useAuth, type AuthUser } from "@/hooks/use-auth";
 
 export default function Login() {
   const [, navigate] = useLocation();
@@ -16,9 +16,21 @@ export default function Login() {
   const redirectTo = nextPath?.startsWith("/") ? nextPath : "/";
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  // Navigate only once useAuth() itself reports the fresh user — never
+  // right inside the mutation callback. ProtectedRoute reads useAuth() too,
+  // and navigating a render or two before it sees the same fresh data made
+  // it briefly redirect straight back to /login (this component's fresh
+  // "success" state and the route tree's context value updated in
+  // different renders), which looked like login silently doing nothing.
+  useEffect(() => {
+    if (loggedIn && user) navigate(redirectTo);
+  }, [loggedIn, user, navigate, redirectTo]);
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -26,10 +38,16 @@ export default function Login() {
         method: "POST",
         body: JSON.stringify({ email, password }),
       }),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      // The app's own startup fetch of ["auth", "me"] (expected to 401 while
+      // logged out) can still be in flight or retrying here — most visibly
+      // after a slow cold-start server response. If it resolves after this,
+      // it silently overwrites the freshly-logged-in user with that stale
+      // result. Cancel it first so it can never win the race.
+      await queryClient.cancelQueries({ queryKey: ["auth", "me"] });
       queryClient.setQueryData(["auth", "me"], data);
       toast({ title: "Welcome back", variant: "success" });
-      navigate(redirectTo);
+      setLoggedIn(true);
     },
     onError: (err) => {
       setFormError(

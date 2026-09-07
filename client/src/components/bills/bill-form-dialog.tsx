@@ -135,8 +135,19 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
   // operates over: real member ids for a real group, or userIds for an
   // individual bill — computeBillBreakdown/AssignmentEditor/ItemListEditor
   // are pure over opaque numeric ids, so this needs no parallel logic.
+  //
+  // Itemize mode has no separate "who's on this bill" narrowing step for a
+  // real group — every item defaults to the group's full roster, and
+  // per-item "Edit split" is the only way to exclude someone, so there's
+  // exactly one source of truth for who's assigned. Quick Split has no
+  // per-item granularity, so its own "Split equally between" subset is
+  // still the only way to exclude someone there.
   const effectiveMembers: { id: number; displayName: string }[] = isIndividualSelected ? participants : members;
-  const effectiveMemberIds: number[] = isIndividualSelected ? participants.map((p) => p.id) : (splitMemberIds ?? []);
+  const effectiveMemberIds: number[] = isIndividualSelected
+    ? participants.map((p) => p.id)
+    : quickSplit
+      ? (splitMemberIds ?? [])
+      : members.map((m) => m.id);
 
   // Itemized mode — a real item list. Each item defaults to an equal split
   // among effectiveMemberIds unless overridden via the inline assignment
@@ -638,8 +649,8 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
               />
               <p className="text-xs text-muted-foreground">
                 {effectiveMembers.length === 0
-                  ? "Choose a group above, then each item will split equally among everyone selected — override any item individually."
-                  : "Each item splits equally among everyone selected below by default."}
+                  ? "Choose a group above, then each item will split equally among everyone in it by default — override any item individually."
+                  : "Each item splits equally among everyone by default — override any item's split above."}
               </p>
             </div>
           )}
@@ -705,9 +716,9 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
             </div>
           )}
 
-          {effectiveGroupId && members.length > 1 && (
+          {effectiveGroupId && quickSplit && members.length > 1 && (
             <div className="space-y-1.5">
-              <Label>{quickSplit ? "Split equally between" : "People on this bill"}</Label>
+              <Label>Split equally between</Label>
               {!showMemberPicker ? (
                 <button
                   type="button"

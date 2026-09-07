@@ -174,9 +174,15 @@ export const itemAssignments = pgTable("item_assignments", {
   billItemId: integer("bill_item_id")
     .notNull()
     .references(() => billItems.id, { onDelete: "cascade" }),
+  // No onDelete cascade here (unlike billItemId above) — a member with any
+  // assignment history must never be removable in a way that silently
+  // deletes their share, which would break the invariant that a bill's
+  // shares always sum to its total. Removing a member who has any bill
+  // involvement (payer or assignee) is blocked at the group-members route
+  // instead, the same way paidByMemberId already blocks it below.
   memberId: integer("member_id")
     .notNull()
-    .references(() => groupMembers.id, { onDelete: "cascade" }),
+    .references(() => groupMembers.id),
   splitType: text("split_type", { enum: SPLIT_TYPES }).notNull().default("equal"),
   percentage: integer("percentage"),
   ratio: integer("ratio"),

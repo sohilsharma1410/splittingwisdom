@@ -69,6 +69,7 @@ export default function GroupDetail() {
         title: err instanceof ApiError ? err.message : "Couldn't add them. Try again.",
         variant: "error",
       });
+      throw err; // let PersonSearch know the add failed, so it un-hides them
     }
   }
 
