@@ -48,7 +48,7 @@ Follow SPEC.md §15: mint #5BC5A7 primary, coral #FF6B6B for debt/settle actions
 - Commit at each checkpoint marked in the phase file, with a clear message (`phase1: auth complete`, etc.).
 - Before claiming a phase complete: run `npm run check`, run all tests, run the production build (`npm run build`), and state the results honestly. If anything fails, it's not complete.
 - Do not add features, packages, or abstractions not required by the current phase. When tempted, append the idea to `BACKLOG.md` instead.
-- Environment variables documented in `.env.example`; never commit real secrets. Required vars so far: `DATABASE_URL`, `SESSION_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `GEMINI_API_KEY` (Phase 3+), `CLIENT_ORIGIN`.
+- Environment variables documented in `.env.example`; never commit real secrets. Required vars so far: `DATABASE_URL`, `SESSION_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `GEMINI_API_KEY` (Phase 5+), `CLIENT_ORIGIN`.
 
 ## Explicitly out of scope (never build unless the human asks)
 

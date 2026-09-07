@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { Activity as ActivityIcon, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
+import { Activity as ActivityIcon, Camera, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,7 +29,10 @@ function ActivityCard({ bill }: { bill: ActivityBillItem }) {
 
       <div className="flex items-start justify-between gap-3 pr-20 md:pr-0">
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">{bill.description}</p>
+          <p className="flex items-center gap-1.5 truncate font-medium">
+            {bill.description}
+            {bill.hasReceipt && <Camera className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Has a receipt photo" />}
+          </p>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {bill.groupName} · {format(parseDateOnly(bill.billDate), "d MMM yyyy")} · Paid by {bill.paidByName}
           </p>

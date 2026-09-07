@@ -14,9 +14,12 @@ export async function apiFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
+  // FormData bodies (receipt image uploads) must NOT get a manual
+  // Content-Type — the browser sets its own with the multipart boundary.
+  const isFormData = init?.body instanceof FormData;
   const res = await fetch(`${API_BASE_URL}${path}`, {
     credentials: "include",
-    headers: init?.body ? { "Content-Type": "application/json" } : undefined,
+    headers: init?.body && !isFormData ? { "Content-Type": "application/json" } : undefined,
     ...init,
   });
 

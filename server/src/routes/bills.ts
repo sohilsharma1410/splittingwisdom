@@ -1,4 +1,5 @@
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
+import multer from "multer";
 import { eq, and, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
@@ -19,6 +20,29 @@ import {
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getMembership } from "../middleware/authorize.js";
+import { rateLimit } from "../middleware/rate-limit.js";
+import { isSupportedReceiptMimeType, uploadReceiptImage, getReceiptSignedUrl } from "../lib/storage.js";
+import { extractReceipt } from "../lib/gemini.js";
+
+const MAX_RECEIPT_IMAGE_BYTES = 10 * 1024 * 1024;
+const receiptUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_RECEIPT_IMAGE_BYTES },
+});
+
+function handleReceiptUpload(req: Request, res: Response, next: NextFunction) {
+  receiptUpload.single("image")(req, res, (err: unknown) => {
+    if (!err) {
+      next();
+      return;
+    }
+    if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+      res.status(400).json({ error: { message: "Image must be under 10 MB." } });
+      return;
+    }
+    next(err);
+  });
+}
 
 /** Finds (or lazily creates) a hidden group for an exact set of people —
  * one person for a solo/"personal" bill, more for an individual/ad hoc
@@ -212,6 +236,7 @@ router.get("/", async (req, res) => {
       unassignedItemCount: bill.items.length - assignedItemCount,
       paidByName: bill.paidBy.displayName,
       status: bill.status,
+      hasReceipt: bill.receiptImageUrl !== null,
       myShare,
       createdAt: bill.createdAt,
       items: buildItemsResponse(bill.items).map((item) => ({
@@ -352,6 +377,41 @@ router.post("/", async (req, res) => {
   res.status(201).json({ data: { bill } });
 });
 
+// ---------------------------------------------------------------------------
+// POST /api/bills/extract — upload a receipt photo and get back OCR'd bill
+// data to prefill the create-bill form. Never a gate: the image uploads to
+// Storage *before* Gemini is called, so a failed/timed-out extraction still
+// returns a usable imagePath and the client falls back to manual entry with
+// the photo preserved (SPEC §2.7). Rate-limited since this is the one route
+// that costs real (if free-tier) external API usage per call.
+// ---------------------------------------------------------------------------
+router.post(
+  "/extract",
+  rateLimit({ max: 10, windowMs: 60 * 60 * 1000 }),
+  handleReceiptUpload,
+  async (req, res) => {
+    if (!req.file) {
+      res.status(400).json({ error: { message: "No image was uploaded." } });
+      return;
+    }
+    if (!isSupportedReceiptMimeType(req.file.mimetype)) {
+      res.status(400).json({ error: { message: "Please upload a JPEG, PNG, or WEBP image." } });
+      return;
+    }
+
+    const imagePath = await uploadReceiptImage(req.file.buffer, req.file.mimetype, req.session.userId!);
+    const extraction = await extractReceipt(req.file.buffer, req.file.mimetype);
+
+    res.json({
+      data: {
+        imagePath,
+        extraction,
+        extractionFailed: extraction === null,
+      },
+    });
+  },
+);
+
 router.get("/:id", async (req, res) => {
   const billId = Number(req.params.id);
   if (!Number.isInteger(billId)) {
@@ -397,6 +457,7 @@ router.get("/:id", async (req, res) => {
         groupId: bill.groupId,
         groupName: bill.group.name,
         groupIsPersonal: bill.group.isPersonal,
+        hasReceipt: bill.receiptImageUrl !== null,
         description: bill.description,
         merchant: bill.merchant,
         billDate: bill.billDate,
@@ -422,6 +483,75 @@ router.get("/:id", async (req, res) => {
       },
     },
   });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/bills/:id/receipt — attach/replace a receipt photo on an
+// existing bill. Uploads to private Supabase Storage; only the bucket path
+// is stored (in receiptImageUrl, despite the name) — never a public URL.
+// ---------------------------------------------------------------------------
+router.post("/:id/receipt", handleReceiptUpload, async (req, res) => {
+  const billId = Number(req.params.id);
+  if (!Number.isInteger(billId)) {
+    res.status(404).json({ error: { message: "Bill not found." } });
+    return;
+  }
+
+  const existing = await db.query.bills.findFirst({ where: eq(bills.id, billId) });
+  if (!existing) {
+    res.status(404).json({ error: { message: "Bill not found." } });
+    return;
+  }
+  const membership = await getMembership(req.session.userId!, existing.groupId);
+  if (!membership) {
+    res.status(404).json({ error: { message: "Bill not found." } });
+    return;
+  }
+
+  if (!req.file) {
+    res.status(400).json({ error: { message: "No image was uploaded." } });
+    return;
+  }
+  if (!isSupportedReceiptMimeType(req.file.mimetype)) {
+    res.status(400).json({ error: { message: "Please upload a JPEG, PNG, or WEBP image." } });
+    return;
+  }
+
+  const path = await uploadReceiptImage(req.file.buffer, req.file.mimetype, req.session.userId!);
+  await db.update(bills).set({ receiptImageUrl: path, updatedAt: new Date() }).where(eq(bills.id, billId));
+
+  res.status(201).json({ data: { success: true } });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/bills/:id/receipt-url — a short-lived signed URL for this bill's
+// receipt image, scoped to the requester's group membership. Never persist
+// this URL client-side beyond the current view — it expires in 10 minutes.
+// ---------------------------------------------------------------------------
+router.get("/:id/receipt-url", async (req, res) => {
+  const billId = Number(req.params.id);
+  if (!Number.isInteger(billId)) {
+    res.status(404).json({ error: { message: "Bill not found." } });
+    return;
+  }
+
+  const existing = await db.query.bills.findFirst({ where: eq(bills.id, billId) });
+  if (!existing) {
+    res.status(404).json({ error: { message: "Bill not found." } });
+    return;
+  }
+  const membership = await getMembership(req.session.userId!, existing.groupId);
+  if (!membership) {
+    res.status(404).json({ error: { message: "Bill not found." } });
+    return;
+  }
+  if (!existing.receiptImageUrl) {
+    res.status(404).json({ error: { message: "This bill has no receipt image." } });
+    return;
+  }
+
+  const url = await getReceiptSignedUrl(existing.receiptImageUrl);
+  res.json({ data: { url } });
 });
 
 router.patch("/:id", async (req, res) => {

@@ -12,7 +12,9 @@
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
+    "@google/genai": "^2.21.0",
     "@splittingwisdom/shared": "*",
+    "@supabase/supabase-js": "^2.115.0",
     "bcrypt": "^6.0.0",
     "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.6",
@@ -20,6 +22,7 @@
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
+    "multer": "^2.3.0",
     "nanoid": "^6.0.1",
     "postgres": "^3.4.9",
     "zod": "^4.4.3"
@@ -30,6 +33,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/express-session": "^1.19.0",
+    "@types/multer": "^2.2.0",
     "@types/node": "^26.2.0",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.23.12",

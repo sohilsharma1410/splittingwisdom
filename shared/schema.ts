@@ -294,6 +294,7 @@ export const insertBillSchema = createInsertSchema(bills, {
   serviceFeeAmount: true,
   discountAmount: true,
   paidByMemberId: true,
+  receiptImageUrl: true,
 });
 
 // ---------------------------------------------------------------------------

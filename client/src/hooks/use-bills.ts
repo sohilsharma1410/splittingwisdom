@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/query-client";
+import { downscaleImage } from "@/lib/downscale-image";
 
 export type SplitType = "equal" | "percentage" | "ratio" | "custom";
 
@@ -61,6 +62,7 @@ export interface BillDetail {
   paidByMemberId: number;
   paidByName: string;
   status: "pending" | "settled";
+  hasReceipt: boolean;
   createdByName: string;
   lastEditedByName: string | null;
   lastEditedAt: string | null;
@@ -119,6 +121,7 @@ export interface ActivityBillItem {
   unassignedItemCount: number;
   paidByName: string;
   status: "pending" | "settled";
+  hasReceipt: boolean;
   myShare: number;
   createdAt: string;
   items: BillItemDetail[];
@@ -180,6 +183,37 @@ export function useUpdateBill(id: number, groupId: number) {
       invalidateBillEffects(queryClient, groupId);
       queryClient.invalidateQueries({ queryKey: ["bills", id] });
     },
+  });
+}
+
+export function useUploadReceipt(id: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const downscaled = await downscaleImage(file);
+      const formData = new FormData();
+      formData.append("image", downscaled);
+      return apiFetch<{ success: true }>(`/api/bills/${id}/receipt`, {
+        method: "POST",
+        body: formData,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bills", id] });
+      queryClient.invalidateQueries({ queryKey: ["activity"] });
+    },
+  });
+}
+
+/** A fresh signed URL, fetched on demand rather than cached long-term —
+ * it expires in 10 minutes server-side. `enabled` should gate this on the
+ * viewer actually opening the image (e.g. a dialog), not the bill loading. */
+export function useReceiptUrl(id: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ["bills", id, "receipt-url"],
+    queryFn: () => apiFetch<{ url: string }>(`/api/bills/${id}/receipt-url`),
+    enabled,
+    staleTime: 0,
   });
 }
 

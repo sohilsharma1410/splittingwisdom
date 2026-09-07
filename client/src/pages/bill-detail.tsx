@@ -12,6 +12,7 @@ import { BillFormDialog } from "@/components/bills/bill-form-dialog";
 import { DeleteBillAlert } from "@/components/bills/delete-bill-alert";
 import { AssignmentEditor } from "@/components/bills/assignment-editor";
 import { BreakdownDialog } from "@/components/bills/breakdown-dialog";
+import { ReceiptSection } from "@/components/bills/receipt-section";
 import { useBill, useUpdateBill, type BillItemDetail, type BillItemInput, type ItemAssignmentInput } from "@/hooks/use-bills";
 import { useGroup } from "@/hooks/use-groups";
 import { useToast } from "@/components/ui/toast";
@@ -127,6 +128,9 @@ export default function BillDetail() {
             Edited by {bill.lastEditedByName} at {format(new Date(bill.lastEditedAt), "d MMM yyyy, h:mm a")}
           </p>
         )}
+        <div className="mt-3 border-t border-border pt-3">
+          <ReceiptSection billId={bill.id} hasReceipt={bill.hasReceipt} />
+        </div>
       </section>
 
       <section className="space-y-3">
