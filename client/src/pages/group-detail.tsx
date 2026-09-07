@@ -111,6 +111,40 @@ export default function GroupDetail() {
       </header>
 
       <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Bills</h2>
+          <Button size="sm" onClick={() => setNewBillOpen(true)}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Add Bill
+          </Button>
+        </div>
+
+        {billsLoading && (
+          <div className="space-y-2">
+            <Skeleton className="h-16" />
+            <Skeleton className="h-16" />
+          </div>
+        )}
+
+        {!billsLoading && billsData && billsData.bills.length === 0 && (
+          <EmptyState
+            icon={Receipt}
+            heading="No bills yet"
+            description="Add a bill and split it equally among the people involved."
+            action={<Button onClick={() => setNewBillOpen(true)}>Add Bill</Button>}
+          />
+        )}
+
+        {!billsLoading && billsData && billsData.bills.length > 0 && (
+          <div className="space-y-2">
+            {billsData.bills.map((bill) => (
+              <BillCard key={bill.id} bill={bill} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
         <h2 className="text-lg font-semibold">Members</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {group.members.map((member) => (
@@ -158,40 +192,6 @@ export default function GroupDetail() {
 
       <section>
         <InviteLinkCard inviteToken={group.inviteToken} groupName={group.name} />
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Bills</h2>
-          <Button size="sm" variant="outline" onClick={() => setNewBillOpen(true)}>
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Add Bill
-          </Button>
-        </div>
-
-        {billsLoading && (
-          <div className="space-y-2">
-            <Skeleton className="h-16" />
-            <Skeleton className="h-16" />
-          </div>
-        )}
-
-        {!billsLoading && billsData && billsData.bills.length === 0 && (
-          <EmptyState
-            icon={Receipt}
-            heading="No bills yet"
-            description="Add a bill and split it equally among the people involved."
-            action={<Button onClick={() => setNewBillOpen(true)}>Add Bill</Button>}
-          />
-        )}
-
-        {!billsLoading && billsData && billsData.bills.length > 0 && (
-          <div className="space-y-2">
-            {billsData.bills.map((bill) => (
-              <BillCard key={bill.id} bill={bill} />
-            ))}
-          </div>
-        )}
       </section>
 
       <BillFormDialog open={newBillOpen} onOpenChange={setNewBillOpen} lockedGroupId={group.id} />

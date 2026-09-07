@@ -188,6 +188,25 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
     setReceiptTotal("");
   }
 
+  // This dialog is a single persistent instance shared across the whole
+  // app (AppShell's FAB/sidebar trigger) — lockedGroupId can change as the
+  // user navigates between pages between opens, but groupSelection's own
+  // state doesn't automatically follow a prop change. Re-sync it every
+  // time the dialog opens for a new bill, so opening it from a group page
+  // always locks to that group even if it was last opened elsewhere.
+  useEffect(() => {
+    if (!open || isEditing) return;
+    const next = lockedGroupId ?? null;
+    if (next === groupSelection) return;
+    setGroupSelection(next);
+    // Same reset onValueChange does when the user manually switches groups
+    // — otherwise the previous group's picks/defaults linger.
+    setParticipants([]);
+    setSplitMemberIds(null);
+    setPayerMemberId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isEditing, lockedGroupId]);
+
   // Prefill every field from the bill being edited, as soon as the dialog opens.
   useEffect(() => {
     if (!open || !editBill) return;

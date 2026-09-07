@@ -24,14 +24,16 @@ function ActivityCard({ bill }: { bill: ActivityBillItem }) {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
+    <div className="relative rounded-xl border border-border bg-surface p-4 transition-shadow hover:shadow-md">
+      <Link href={`/bill/${bill.id}`} className="absolute inset-0" aria-label={`Open ${bill.description}`} />
+
       <div className="flex items-start justify-between gap-3 pr-20 md:pr-0">
-        <Link href={`/bill/${bill.id}`} className="min-w-0 flex-1">
-          <p className="truncate font-medium hover:underline">{bill.description}</p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium">{bill.description}</p>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {bill.groupName} · {format(parseDateOnly(bill.billDate), "d MMM yyyy")} · Paid by {bill.paidByName}
           </p>
-        </Link>
+        </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <span className="tabular-currency font-semibold">{formatPaise(bill.grandTotal)}</span>
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -52,7 +54,14 @@ function ActivityCard({ bill }: { bill: ActivityBillItem }) {
 
       <div className="mt-2 flex items-center justify-between text-sm">
         <span className="text-muted-foreground">Your share: {formatPaise(bill.myShare)}</span>
-        <button onClick={() => setBreakdownOpen(true)} className="text-mint hover:underline">
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setBreakdownOpen(true);
+          }}
+          className="relative z-10 text-mint hover:underline"
+        >
           {bill.itemCount} item{bill.itemCount === 1 ? "" : "s"} · See breakdown
         </button>
       </div>

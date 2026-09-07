@@ -15,6 +15,8 @@ import { formatPaise } from "@splittingwisdom/shared";
 import { parseDateOnly } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
+const RECENT_LIMIT = 3;
+
 export default function Dashboard() {
   const [newBillOpen, setNewBillOpen] = useState(false);
   const groupsQuery = useGroups();
@@ -28,12 +30,8 @@ export default function Dashboard() {
     return (
       <div className="space-y-6">
         <Skeleton className="h-9 w-64" />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-        </div>
-        <Skeleton className="h-64" />
+        <Skeleton className="h-24" />
+        <Skeleton className="h-48" />
       </div>
     );
   }
@@ -52,7 +50,9 @@ export default function Dashboard() {
   }
 
   const { netBalance, balances } = balancesQuery.data;
-  const recentBills = activityQuery.data.bills.slice(0, 5);
+  const recentBills = activityQuery.data.bills.slice(0, RECENT_LIMIT);
+  const outstandingBalances = balances.filter((b) => b.netAmount !== 0);
+  const topBalances = outstandingBalances.slice(0, RECENT_LIMIT);
   const hasNothingYet = groupsQuery.data.groups.length === 0;
 
   return (
@@ -78,8 +78,11 @@ export default function Dashboard() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Link href="/balances" className="rounded-xl border border-border bg-surface p-4 hover:shadow-md">
+          <Link
+            href="/balances"
+            className="flex items-center justify-between rounded-xl border border-border bg-surface p-4 hover:shadow-md"
+          >
+            <div>
               <p className="text-sm text-muted-foreground">Net balance</p>
               <p
                 className={cn(
@@ -90,36 +93,33 @@ export default function Dashboard() {
               >
                 {netBalance === 0 ? "Settled" : formatPaise(Math.abs(netBalance))}
               </p>
-              <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                {netBalance === 0 ? (
-                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                ) : netBalance > 0 ? (
-                  <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
-                ) : (
-                  <TrendingDown className="h-3.5 w-3.5" aria-hidden="true" />
-                )}
-                {netBalance === 0 ? "All settled" : netBalance > 0 ? "Owed to you" : "You owe"}
-              </p>
+            </div>
+            <span className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
+              {netBalance === 0 ? (
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+              ) : netBalance > 0 ? (
+                <TrendingUp className="h-4 w-4 text-success" aria-hidden="true" />
+              ) : (
+                <TrendingDown className="h-4 w-4 text-coral" aria-hidden="true" />
+              )}
+              {netBalance === 0 ? "All settled" : netBalance > 0 ? "Owed to you" : "You owe"}
+            </span>
+          </Link>
+
+          <div className="flex items-center gap-5 text-sm text-muted-foreground">
+            <Link href="/groups" className="flex items-center gap-1.5 hover:text-foreground">
+              <Users className="h-4 w-4" aria-hidden="true" />
+              {groupsQuery.data.groups.length} group{groupsQuery.data.groups.length === 1 ? "" : "s"}
             </Link>
-            <Link href="/groups" className="rounded-xl border border-border bg-surface p-4 hover:shadow-md">
-              <p className="text-sm text-muted-foreground">Active groups</p>
-              <p className="mt-1 flex items-center gap-2 text-2xl font-semibold">
-                <Users className="h-5 w-5 text-mint" aria-hidden="true" />
-                {groupsQuery.data.groups.length}
-              </p>
-            </Link>
-            <Link href="/activity" className="rounded-xl border border-border bg-surface p-4 hover:shadow-md">
-              <p className="text-sm text-muted-foreground">Recent bills</p>
-              <p className="mt-1 flex items-center gap-2 text-2xl font-semibold">
-                <Receipt className="h-5 w-5 text-mint" aria-hidden="true" />
-                {activityQuery.data.bills.length}
-              </p>
+            <Link href="/activity" className="flex items-center gap-1.5 hover:text-foreground">
+              <Receipt className="h-4 w-4" aria-hidden="true" />
+              {activityQuery.data.bills.length} bill{activityQuery.data.bills.length === 1 ? "" : "s"}
             </Link>
           </div>
 
-          <section className="space-y-3">
+          <section className="space-y-2">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Recent activity</h2>
+              <h2 className="text-base font-semibold">Recent activity</h2>
               <Link href="/activity" className="text-sm text-mint hover:underline">
                 View all
               </Link>
@@ -127,18 +127,17 @@ export default function Dashboard() {
             {recentBills.length === 0 ? (
               <EmptyState icon={Receipt} heading="No bills yet" description="Bills you add will show up here." />
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {recentBills.map((bill) => (
                   <Link
                     key={bill.id}
                     href={`/bill/${bill.id}`}
-                    className="flex items-center justify-between gap-4 rounded-xl border border-border bg-surface p-4 pr-20 hover:shadow-md md:pr-4"
+                    className="flex items-center justify-between gap-4 rounded-lg border border-border bg-surface p-3 pr-20 hover:shadow-md md:pr-3"
                   >
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{bill.description}</p>
-                      <p className="mt-0.5 text-sm text-muted-foreground">
-                        {bill.groupName} · {format(parseDateOnly(bill.billDate), "d MMM yyyy")} · Paid by{" "}
-                        {bill.paidByName}
+                      <p className="truncate text-sm font-medium">{bill.description}</p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {bill.groupName} · {format(parseDateOnly(bill.billDate), "d MMM yyyy")}
                       </p>
                       {bill.unassignedItemCount > 0 && (
                         <p className="mt-0.5 flex items-center gap-1 text-xs text-coral">
@@ -147,7 +146,7 @@ export default function Dashboard() {
                         </p>
                       )}
                     </div>
-                    <span className="tabular-currency shrink-0 font-semibold">
+                    <span className="tabular-currency shrink-0 text-sm font-semibold">
                       {formatPaise(bill.grandTotal)}
                     </span>
                   </Link>
@@ -156,35 +155,40 @@ export default function Dashboard() {
             )}
           </section>
 
-          <section className="space-y-3">
-            <h2 className="text-lg font-semibold">Outstanding balances</h2>
-            {balances.filter((b) => b.netAmount !== 0).length === 0 ? (
+          <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold">Outstanding balances</h2>
+              {outstandingBalances.length > 0 && (
+                <Link href="/balances" className="text-sm text-mint hover:underline">
+                  View all
+                </Link>
+              )}
+            </div>
+            {topBalances.length === 0 ? (
               <EmptyState icon={CheckCircle2} heading="All settled up" description="No outstanding balances." />
             ) : (
-              <div className="space-y-2">
-                {balances
-                  .filter((b) => b.netAmount !== 0)
-                  .map((b) => (
-                    <Link
-                      key={b.personId}
-                      href={`/balance/${b.personId}`}
-                      className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4 pr-20 hover:shadow-md md:pr-4"
+              <div className="space-y-1.5">
+                {topBalances.map((b) => (
+                  <Link
+                    key={b.personId}
+                    href={`/balance/${b.personId}`}
+                    className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3 pr-20 hover:shadow-md md:pr-3"
+                  >
+                    <InitialsAvatar name={b.displayName} className="h-8 w-8 text-xs" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{b.displayName}</p>
+                      <p className="text-xs text-muted-foreground">{b.netAmount > 0 ? "owes you" : "you owe"}</p>
+                    </div>
+                    <span
+                      className={cn(
+                        "tabular-currency shrink-0 text-sm font-semibold",
+                        b.netAmount > 0 ? "text-success" : "text-coral",
+                      )}
                     >
-                      <InitialsAvatar name={b.displayName} />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{b.displayName}</p>
-                        <p className="text-xs text-muted-foreground">{b.netAmount > 0 ? "owes you" : "you owe"}</p>
-                      </div>
-                      <span
-                        className={cn(
-                          "tabular-currency shrink-0 text-sm font-semibold",
-                          b.netAmount > 0 ? "text-success" : "text-coral",
-                        )}
-                      >
-                        {formatPaise(Math.abs(b.netAmount))}
-                      </span>
-                    </Link>
-                  ))}
+                      {formatPaise(Math.abs(b.netAmount))}
+                    </span>
+                  </Link>
+                ))}
               </div>
             )}
           </section>

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useRoute } from "wouter";
 import { Sidebar } from "@/components/shell/sidebar";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { MobileHeader } from "@/components/shell/mobile-header";
@@ -6,6 +7,11 @@ import { BillFormDialog } from "@/components/bills/bill-form-dialog";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [newBillOpen, setNewBillOpen] = useState(false);
+  // The FAB/sidebar "New Bill" action is global — rendered once here, not
+  // per-page — so without this it always opened group-less, even while
+  // already looking at a specific group. Auto-lock to that group instead.
+  const [onGroupPage, groupRouteParams] = useRoute<{ id: string }>("/group/:id");
+  const currentGroupId = onGroupPage && groupRouteParams ? Number(groupRouteParams.id) : undefined;
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -17,7 +23,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
       </div>
       <MobileNav onNewBill={() => setNewBillOpen(true)} />
-      <BillFormDialog open={newBillOpen} onOpenChange={setNewBillOpen} />
+      <BillFormDialog open={newBillOpen} onOpenChange={setNewBillOpen} lockedGroupId={currentGroupId} />
     </div>
   );
 }

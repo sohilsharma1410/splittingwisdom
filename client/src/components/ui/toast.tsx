@@ -34,7 +34,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((t) => (
           <ToastPrimitive.Root
             key={t.id}
-            duration={5000}
+            duration={3000}
             onOpenChange={(open) => !open && dismiss(t.id)}
             className={cn(
               "flex items-start gap-3 rounded-xl border border-border bg-surface p-4 shadow-lg transition-all",
