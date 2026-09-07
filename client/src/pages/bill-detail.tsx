@@ -88,11 +88,15 @@ export default function BillDetail() {
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-2">
-          <BackButton fallbackHref={`/group/${bill.groupId}`} />
+          <BackButton fallbackHref={bill.groupIsPersonal ? "/activity" : `/group/${bill.groupId}`} />
           <div className="min-w-0">
-            <Link href={`/group/${bill.groupId}`} className="text-sm text-mint hover:underline">
-              {bill.groupName}
-            </Link>
+            {bill.groupIsPersonal ? (
+              <span className="text-sm text-muted-foreground">{bill.groupName}</span>
+            ) : (
+              <Link href={`/group/${bill.groupId}`} className="text-sm text-mint hover:underline">
+                {bill.groupName}
+              </Link>
+            )}
             <h1 className="mt-1 text-3xl font-semibold">{bill.description}</h1>
             <p className="mt-1 text-muted-foreground">
               {format(billDateLocal, "d MMM yyyy")}

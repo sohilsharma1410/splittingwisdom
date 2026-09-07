@@ -69,7 +69,8 @@ router.get("/", async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // POST /api/groups — create a group with the creator as the sole member.
-// Everyone else joins via the invite link (no free-text member entry).
+// Everyone else is added by direct search (POST /:id/members) or joins via
+// the invite link — never a free-text member entry.
 // ---------------------------------------------------------------------------
 router.post("/", async (req, res) => {
   const parsed = insertGroupSchema.safeParse(req.body);
@@ -201,6 +202,40 @@ router.delete("/:id", requireGroupMember("id"), async (req, res) => {
 
   await db.delete(groups).where(eq(groups.id, res.locals.groupId!));
   res.json({ data: { success: true } });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/groups/:id/members — add an already-registered user directly
+// (found via search). Never accepts a free-text name — that ban from
+// Phase 3 §1 stands; this is a second, equally strict path to a real
+// account, alongside the invite link, not a reopening of it.
+// ---------------------------------------------------------------------------
+router.post("/:id/members", requireGroupMember("id"), async (req, res) => {
+  const userId = Number(req.body?.userId);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    res.status(400).json({ error: { message: "Choose someone to add." } });
+    return;
+  }
+
+  const targetUser = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!targetUser) {
+    res.status(404).json({ error: { message: "That person couldn't be found." } });
+    return;
+  }
+
+  try {
+    const [member] = await db
+      .insert(groupMembers)
+      .values({ groupId: res.locals.groupId!, userId: targetUser.id, displayName: targetUser.displayName })
+      .returning();
+    res.status(201).json({ data: { member } });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      res.status(409).json({ error: { message: "Already in this group." } });
+      return;
+    }
+    throw err;
+  }
 });
 
 // ---------------------------------------------------------------------------

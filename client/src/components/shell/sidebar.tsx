@@ -4,6 +4,7 @@ import { ChevronsLeft, ChevronsRight, Plus, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
+import { EditProfileDialog } from "@/components/profile/edit-profile-dialog";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
@@ -13,6 +14,7 @@ export function Sidebar({ onNewBill }: { onNewBill: () => void }) {
   const [location, navigate] = useLocation();
   const { user, logout } = useAuth();
   const { toast } = useToast();
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -87,12 +89,21 @@ export function Sidebar({ onNewBill }: { onNewBill: () => void }) {
                 <p className="truncate text-sm font-medium">
                   {user.displayName}
                 </p>
-                <button
-                  onClick={handleLogout}
-                  className="text-xs text-muted-foreground hover:text-coral"
-                >
-                  Log out
-                </button>
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    onClick={() => setEditProfileOpen(true)}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    Edit profile
+                  </button>
+                  <span className="text-muted-foreground">·</span>
+                  <button
+                    onClick={handleLogout}
+                    className="text-muted-foreground hover:text-coral"
+                  >
+                    Log out
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -115,6 +126,7 @@ export function Sidebar({ onNewBill }: { onNewBill: () => void }) {
           <ChevronsLeft className="h-4 w-4" aria-hidden="true" />
         )}
       </button>
+      <EditProfileDialog open={editProfileOpen} onOpenChange={setEditProfileOpen} />
     </aside>
   );
 }

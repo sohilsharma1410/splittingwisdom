@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
 import { eq } from "drizzle-orm";
-import { registerSchema, loginSchema, users } from "@splittingwisdom/shared";
+import { registerSchema, loginSchema, updateProfileSchema, users } from "@splittingwisdom/shared";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { isUniqueViolation } from "../lib/pg-errors.js";
@@ -13,12 +13,14 @@ function toPublicUser(user: {
   id: number;
   email: string;
   displayName: string;
+  phone: string | null;
   createdAt: Date;
 }) {
   return {
     id: user.id,
     email: user.email,
     displayName: user.displayName,
+    phone: user.phone,
     createdAt: user.createdAt,
   };
 }
@@ -102,6 +104,29 @@ router.get("/me", requireAuth, async (req, res) => {
   }
 
   res.json({ data: { user: toPublicUser(user) } });
+});
+
+router.patch("/me", requireAuth, async (req, res) => {
+  const parsed = updateProfileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: { message: parsed.error.issues[0].message } });
+    return;
+  }
+
+  try {
+    const [user] = await db
+      .update(users)
+      .set(parsed.data)
+      .where(eq(users.id, req.session.userId!))
+      .returning();
+    res.json({ data: { user: toPublicUser(user) } });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      res.status(409).json({ error: { message: "That phone number is already in use." } });
+      return;
+    }
+    throw err;
+  }
 });
 
 export default router;

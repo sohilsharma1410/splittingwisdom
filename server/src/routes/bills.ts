@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   createBillSchema,
@@ -20,27 +20,55 @@ import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getMembership } from "../middleware/authorize.js";
 
-/** Finds (or lazily creates) the requester's own personal, single-member
- * space for untracked-with-others bills. Never has an invite flow — it's
- * excluded from the Groups list entirely (GET /api/groups filters it out). */
-async function getOrCreatePersonalGroupId(userId: number): Promise<number> {
-  const existing = await db.query.groups.findFirst({
-    where: and(eq(groups.createdBy, userId), eq(groups.isPersonal, true)),
-  });
-  if (existing) return existing.id;
+/** Finds (or lazily creates) a hidden group for an exact set of people —
+ * one person for a solo/"personal" bill, more for an individual/ad hoc
+ * split with no real named group. Never has an invite flow of its own —
+ * excluded from the Groups list entirely (GET /api/groups filters it out).
+ * Reused whenever the exact same set of people needs another bill
+ * together, so this never creates a duplicate shadow group. */
+async function getOrCreateSharedGroupId(participantUserIds: number[], createdBy: number): Promise<number> {
+  const sortedIds = [...new Set(participantUserIds)].sort((a, b) => a - b);
 
-  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  const candidateMemberships = await db.query.groupMembers.findMany({
+    where: inArray(groupMembers.userId, sortedIds),
+    columns: { groupId: true },
+  });
+  const candidateGroupIds = [...new Set(candidateMemberships.map((m) => m.groupId))];
+
+  if (candidateGroupIds.length > 0) {
+    const candidates = await db.query.groups.findMany({
+      where: and(inArray(groups.id, candidateGroupIds), eq(groups.isPersonal, true)),
+      with: { members: { columns: { userId: true } } },
+    });
+    for (const candidate of candidates) {
+      const memberUserIds = candidate.members
+        .map((m) => m.userId)
+        .filter((id): id is number => id !== null)
+        .sort((a, b) => a - b);
+      const isExactMatch =
+        memberUserIds.length === sortedIds.length && memberUserIds.every((id, i) => id === sortedIds[i]);
+      if (isExactMatch) return candidate.id;
+    }
+  }
+
+  const participants = await db.query.users.findMany({ where: inArray(users.id, sortedIds) });
+  const byId = new Map(participants.map((u) => [u.id, u]));
+  const name =
+    sortedIds.length === 1
+      ? "Personal"
+      : sortedIds
+          .map((id) => byId.get(id)?.displayName ?? "Someone")
+          .sort((a, b) => a.localeCompare(b))
+          .join(", ");
+
   const newGroup = await db.transaction(async (tx) => {
     const [group] = await tx
       .insert(groups)
-      .values({
-        name: "Personal",
-        createdBy: userId,
-        inviteToken: nanoid(16),
-        isPersonal: true,
-      })
+      .values({ name, createdBy, inviteToken: nanoid(16), isPersonal: true })
       .returning();
-    await tx.insert(groupMembers).values({ groupId: group.id, userId, displayName: user!.displayName });
+    await tx.insert(groupMembers).values(
+      sortedIds.map((id) => ({ groupId: group.id, userId: id, displayName: byId.get(id)?.displayName ?? "Someone" })),
+    );
     return group;
   });
   return newGroup.id;
@@ -212,10 +240,13 @@ router.post("/", async (req, res) => {
   }
   const input = parsed.data;
 
-  // No groupId means "personal bill" — resolve (or lazily create) the
-  // requester's own single-member space instead of a real shared group.
+  // No groupId means an individual bill (no real named group) — resolve
+  // (or lazily create) a hidden group for the exact set of participants
+  // instead. Item assignments and paidByMemberId the client sent are that
+  // flow's userIds (no real memberId exists yet), so remapMemberId()
+  // below translates them once the group's real members are known.
   let groupId: number;
-  let isPersonalGroup: boolean;
+  let userIdToMemberId: Map<number, number> | null = null;
   if (input.groupId) {
     const membership = await getMembership(req.session.userId!, input.groupId);
     if (!membership) {
@@ -223,19 +254,26 @@ router.post("/", async (req, res) => {
       return;
     }
     groupId = input.groupId;
-    isPersonalGroup = false;
   } else {
-    groupId = await getOrCreatePersonalGroupId(req.session.userId!);
-    isPersonalGroup = true;
+    const participantUserIds = new Set(input.participantUserIds ?? []);
+    participantUserIds.add(req.session.userId!);
+    groupId = await getOrCreateSharedGroupId([...participantUserIds], req.session.userId!);
+
+    const resolvedMembers = await db.query.groupMembers.findMany({ where: eq(groupMembers.groupId, groupId) });
+    userIdToMemberId = new Map(
+      resolvedMembers.filter((m) => m.userId !== null).map((m) => [m.userId!, m.id]),
+    );
+  }
+
+  function remapMemberId(id: number): number {
+    return userIdToMemberId?.get(id) ?? id;
   }
 
   const validMemberIds = await loadGroupMemberIds(groupId);
 
-  // A personal group has exactly one valid member: the requester. Never
-  // trust a client-supplied payer/assignment for it — resolve server-side.
-  let paidByMemberId = input.paidByMemberId;
+  let paidByMemberId = input.paidByMemberId ? remapMemberId(input.paidByMemberId) : undefined;
   if (!paidByMemberId) {
-    if (!isPersonalGroup) {
+    if (input.groupId) {
       res.status(400).json({ error: { message: "Choose who paid." } });
       return;
     }
@@ -249,10 +287,10 @@ router.post("/", async (req, res) => {
     paidByMemberId = myMembership.id;
   }
 
-  const itemsToInsert: BillItemInput[] = isPersonalGroup
+  const itemsToInsert: BillItemInput[] = userIdToMemberId
     ? input.items.map((item) => ({
         ...item,
-        assignments: [{ memberId: paidByMemberId!, splitType: "equal" as const }],
+        assignments: item.assignments.map((a) => ({ ...a, memberId: remapMemberId(a.memberId) })),
       }))
     : input.items;
 
@@ -358,6 +396,7 @@ router.get("/:id", async (req, res) => {
         id: bill.id,
         groupId: bill.groupId,
         groupName: bill.group.name,
+        groupIsPersonal: bill.group.isPersonal,
         description: bill.description,
         merchant: bill.merchant,
         billDate: bill.billDate,

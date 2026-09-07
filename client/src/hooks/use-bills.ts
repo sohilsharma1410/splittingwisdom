@@ -47,6 +47,7 @@ export interface BillDetail {
   id: number;
   groupId: number;
   groupName: string;
+  groupIsPersonal: boolean;
   description: string;
   merchant: string | null;
   billDate: string;
@@ -88,10 +89,12 @@ export interface BillItemInput {
 }
 
 export interface CreateBillInput {
-  /** Omit for a personal (no-group) bill — the server resolves/creates the
-   * user's own personal group and fills in the payer and every item's
-   * assignment, since there's only ever one valid answer: the requester. */
+  /** Omit for an individual (no-group) bill — pass participantUserIds
+   * instead, and the server resolves/creates a hidden group for that exact
+   * set of people. paidByMemberId and every item assignment's memberId are
+   * then interpreted as userIds and remapped to real member ids server-side. */
   groupId?: number;
+  participantUserIds?: number[];
   description: string;
   merchant?: string;
   billDate: string;

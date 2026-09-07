@@ -29,7 +29,8 @@ export function InviteLinkCard({ inviteToken, groupName }: { inviteToken: string
         <h3 className="text-sm font-semibold">Invite link</h3>
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        This is the only way to add someone to the group — send them this link.
+        Already registered? Search for them above. Not on SplittingWisdom yet?
+        Send them this link.
       </p>
       <div className="mt-3 flex gap-2">
         <input

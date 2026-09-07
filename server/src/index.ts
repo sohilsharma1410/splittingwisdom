@@ -6,6 +6,7 @@ import authRouter from "./routes/auth.js";
 import groupsRouter from "./routes/groups.js";
 import billsRouter from "./routes/bills.js";
 import balancesRouter from "./routes/balances.js";
+import usersRouter from "./routes/users.js";
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -34,6 +35,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/groups", groupsRouter);
 app.use("/api/bills", billsRouter);
 app.use("/api/balances", balancesRouter);
+app.use("/api/users", usersRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ error: { message: "Not found." } });

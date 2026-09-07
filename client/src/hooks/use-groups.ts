@@ -111,6 +111,18 @@ export function useRemoveMember(id: number) {
   });
 }
 
+export function useAddMemberByUser(id: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: number) =>
+      apiFetch(`/api/groups/${id}/members`, { method: "POST", body: JSON.stringify({ userId }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["groups", id] });
+      queryClient.invalidateQueries({ queryKey: ["groups"] });
+    },
+  });
+}
+
 export function useJoinGroup(token: string) {
   const queryClient = useQueryClient();
   return useMutation({

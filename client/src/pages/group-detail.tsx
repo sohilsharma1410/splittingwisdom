@@ -19,9 +19,13 @@ import { DeleteGroupAlert } from "@/components/groups/delete-group-alert";
 import { RemoveMemberAlert } from "@/components/groups/remove-member-alert";
 import { BillFormDialog } from "@/components/bills/bill-form-dialog";
 import { BillCard } from "@/components/bills/bill-card";
-import { useGroup, type GroupMemberDetail } from "@/hooks/use-groups";
+import { PersonSearch } from "@/components/people/person-search";
+import { useGroup, useAddMemberByUser, type GroupMemberDetail } from "@/hooks/use-groups";
 import { useGroupBills } from "@/hooks/use-bills";
+import { useKnownPeople, type Person } from "@/hooks/use-people";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/components/ui/toast";
+import { ApiError } from "@/lib/query-client";
 import { formatPaise } from "@splittingwisdom/shared";
 
 export default function GroupDetail() {
@@ -30,6 +34,9 @@ export default function GroupDetail() {
   const { user } = useAuth();
   const { data, isLoading, isError, refetch } = useGroup(groupId);
   const { data: billsData, isLoading: billsLoading } = useGroupBills(groupId);
+  const { data: knownPeopleData } = useKnownPeople();
+  const addMember = useAddMemberByUser(groupId);
+  const { toast } = useToast();
 
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -51,6 +58,19 @@ export default function GroupDetail() {
 
   const { group } = data;
   const isCreator = group.createdBy === user?.id;
+  const memberUserIds = group.members.filter((m) => m.userId !== null).map((m) => m.userId!);
+
+  async function handleAddPerson(person: Person) {
+    try {
+      await addMember.mutateAsync(person.id);
+      toast({ title: `Added ${person.displayName}`, variant: "success" });
+    } catch (err) {
+      toast({
+        title: err instanceof ApiError ? err.message : "Couldn't add them. Try again.",
+        variant: "error",
+      });
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -124,6 +144,15 @@ export default function GroupDetail() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="space-y-3 rounded-xl border border-border bg-surface p-4">
+        <h2 className="text-sm font-semibold">Add someone</h2>
+        <PersonSearch
+          onAdd={handleAddPerson}
+          excludeIds={memberUserIds}
+          knownPeople={knownPeopleData?.people}
+        />
       </section>
 
       <section>

@@ -24,6 +24,9 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   displayName: text("display_name").notNull(),
+  // Digits (plus an optional leading "+"), normalized on write — a lookup
+  // key for search-and-add, not used to send anything.
+  phone: text("phone").unique(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -43,9 +46,11 @@ export const groups = pgTable("groups", {
     .notNull()
     .references(() => users.id),
   inviteToken: text("invite_token").notNull().unique(),
-  // A lazily-created, single-member space for a user's own untracked-with-
-  // others bills (Phase 3 §3). Excluded from the Groups list; never has an
-  // invite flow of its own.
+  // A lazily-created, hidden space for a bill involving one or more people
+  // without a real named group (Phase 3 §3) — one member for a solo
+  // expense, more for an individual/ad hoc split. Excluded from the Groups
+  // list; never has an invite flow of its own; reused whenever the exact
+  // same set of people needs another bill together.
   isPersonal: boolean("is_personal").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -246,6 +251,19 @@ export const selectUserSchema = createSelectSchema(users).omit({
   passwordHash: true,
 });
 
+// Digits plus an optional leading "+", 7-15 digits — a lookup key, not a
+// validated telecom number. Empty string clears the phone (stored as null).
+const phoneSchema = z
+  .string()
+  .transform((v) => v.replace(/[^\d+]/g, ""))
+  .refine((v) => v.length === 0 || /^\+?\d{7,15}$/.test(v), "Enter a valid phone number")
+  .transform((v) => (v.length === 0 ? null : v));
+
+export const updateProfileSchema = z.object({
+  displayName: z.string().min(1, "Name is required").max(80).optional(),
+  phone: phoneSchema.nullable().optional(),
+});
+
 export const insertGroupSchema = createInsertSchema(groups, {
   name: (schema) => schema.min(1, "Group name is required").max(100),
 }).pick({ name: true, coverImage: true });
@@ -361,11 +379,13 @@ function formatPaiseForMessage(paise: number): string {
 }
 
 export const createBillSchema = insertBillSchema.extend({
-  // Both optional: omitting them means "personal bill" — the server
-  // resolves/creates the requester's own personal group and fills in the
-  // payer (and forces every item's assignment to that one person, since
-  // there's no one else it could ever be).
+  // Exactly one of groupId or participantUserIds is expected (never both):
+  // a real group, or a hidden/individual group resolved-or-created for that
+  // exact set of people. When participantUserIds is used, every item
+  // assignment's memberId and paidByMemberId are that flow's userIds —
+  // the server remaps them to real member ids once the group is resolved.
   groupId: z.number().int().positive().optional(),
+  participantUserIds: z.array(z.number().int().positive()).min(1).optional(),
   paidByMemberId: z.number().int().positive().optional(),
   items: z.array(billItemInputSchema).min(1, "Add at least one item"),
 });
@@ -393,3 +413,4 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type CreateBillInput = z.infer<typeof createBillSchema>;
 export type UpdateBillInput = z.infer<typeof updateBillSchema>;
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;

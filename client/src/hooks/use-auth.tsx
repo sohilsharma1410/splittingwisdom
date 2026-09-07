@@ -1,11 +1,12 @@
 import { createContext, useContext, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, ApiError } from "@/lib/query-client";
 
 export interface AuthUser {
   id: number;
   email: string;
   displayName: string;
+  phone: string | null;
   createdAt: string;
 }
 
@@ -50,4 +51,15 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
+}
+
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { displayName?: string; phone?: string | null }) =>
+      apiFetch<{ user: AuthUser }>("/api/auth/me", { method: "PATCH", body: JSON.stringify(input) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
+  });
 }
