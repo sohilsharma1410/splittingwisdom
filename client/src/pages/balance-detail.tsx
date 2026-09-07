@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { useParams } from "wouter";
 import { format } from "date-fns";
-import { Scale, TrendingUp, TrendingDown, CheckCircle2, ChevronDown } from "lucide-react";
+import { Scale, TrendingUp, TrendingDown, CheckCircle2, ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/ui/back-button";
 import { InitialsAvatar } from "@/components/ui/avatar";
+import { BreakdownDialog } from "@/components/bills/breakdown-dialog";
 import { useBalanceDetail, type ContributingBill } from "@/hooks/use-balances";
 import { formatPaise } from "@splittingwisdom/shared";
 import { cn } from "@/lib/utils";
@@ -101,14 +102,13 @@ export default function BalanceDetail() {
 }
 
 function ContributingBillCard({ bill }: { bill: ContributingBill }) {
-  const [expanded, setExpanded] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
       <button
         type="button"
-        onClick={() => setExpanded((e) => !e)}
-        aria-expanded={expanded}
+        onClick={() => setDetailOpen(true)}
         className="flex w-full items-start justify-between gap-3 text-left"
       >
         <div className="min-w-0">
@@ -125,26 +125,31 @@ function ContributingBillCard({ bill }: { bill: ContributingBill }) {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-xs text-muted-foreground">{format(parseDateOnly(bill.billDate), "d MMM yyyy")}</span>
-          <ChevronDown className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")} aria-hidden="true" />
+          <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
         </div>
       </button>
 
-      {expanded && (
-        <div className="mt-3 space-y-1.5 border-t border-border pt-3">
-          {bill.items.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No items driving this contribution.</p>
-          ) : (
-            bill.items.map((item) => (
+      <BreakdownDialog
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        title={bill.description}
+        description={`${bill.groupName} · ${bill.payerIsMe ? "You" : bill.payerName} paid ${formatPaise(bill.grandTotal)}`}
+      >
+        {bill.items.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No items driving this contribution.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {bill.items.map((item) => (
               <div key={item.itemId} className="flex items-center justify-between text-xs">
                 <span className="truncate text-muted-foreground">
                   {item.name} ({SPLIT_TYPE_LABEL[item.splitType]})
                 </span>
                 <span className="tabular-currency shrink-0 font-medium">{formatPaise(item.share)}</span>
               </div>
-            ))
-          )}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </BreakdownDialog>
     </div>
   );
 }

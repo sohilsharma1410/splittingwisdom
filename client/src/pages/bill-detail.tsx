@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, Link } from "wouter";
 import { format } from "date-fns";
 import { parseDateOnly } from "@/lib/date";
-import { Pencil, Trash2, ChevronDown, Receipt } from "lucide-react";
+import { Pencil, Trash2, Receipt } from "lucide-react";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -11,10 +11,10 @@ import { InitialsAvatar } from "@/components/ui/avatar";
 import { BillFormDialog } from "@/components/bills/bill-form-dialog";
 import { DeleteBillAlert } from "@/components/bills/delete-bill-alert";
 import { AssignmentEditor } from "@/components/bills/assignment-editor";
+import { BreakdownDialog } from "@/components/bills/breakdown-dialog";
 import { useBill, useUpdateBill, type BillItemDetail, type BillItemInput, type ItemAssignmentInput } from "@/hooks/use-bills";
 import { useGroup } from "@/hooks/use-groups";
 import { useToast } from "@/components/ui/toast";
-import { memberColor } from "@/lib/member-colors";
 import { cn } from "@/lib/utils";
 import { formatPaise } from "@splittingwisdom/shared";
 
@@ -46,7 +46,7 @@ export default function BillDetail() {
   const { data, isLoading, isError, refetch } = useBill(billId);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [showHow, setShowHow] = useState(false);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [assigningItem, setAssigningItem] = useState<BillItemDetail | null>(null);
   const { toast } = useToast();
 
@@ -152,63 +152,59 @@ export default function BillDetail() {
 
       <section>
         <button
-          onClick={() => setShowHow((s) => !s)}
-          aria-expanded={showHow}
-          className="flex items-center gap-1.5 text-sm font-medium text-mint"
+          onClick={() => setBreakdownOpen(true)}
+          className="text-sm font-medium text-mint hover:underline"
         >
-          <ChevronDown className={`h-4 w-4 transition-transform ${showHow ? "rotate-180" : ""}`} aria-hidden="true" />
-          How was this calculated?
+          See full breakdown
         </button>
-
-        {showHow && (
-          <div className="mt-3 space-y-4 rounded-xl border border-border bg-surface p-5 text-sm">
-            <p className="text-muted-foreground">
-              Each item is split among the people assigned to it, using that item's split method. Tax, tip, and
-              fees are then added — and any discount subtracted — in proportion to each person's item total. Paise
-              that don't divide evenly go one each to people in a fixed order, so shares always add up exactly.
-            </p>
-            <div className="space-y-4 border-t border-border pt-4">
-              {bill.breakdown.map((row) => {
-                const theirItems = bill.items.filter((item) => item.assignments.some((a) => a.memberId === row.memberId));
-                const proportion =
-                  totalAssignedItemShare > 0 ? Math.round((row.itemShare / totalAssignedItemShare) * 100) : 0;
-                const chargesTotal = row.taxShare + row.tipShare + row.serviceFeeShare - row.discountShare;
-
-                return (
-                  <div key={row.memberId}>
-                    <div className="flex items-center justify-between">
-                      <p className="font-medium">{row.displayName}</p>
-                      <span className="tabular-currency font-semibold">{formatPaise(row.total)}</span>
-                    </div>
-                    <ul className="mt-1.5 space-y-1 text-xs text-muted-foreground">
-                      {theirItems.map((item) => {
-                        const assignment = item.assignments.find((a) => a.memberId === row.memberId)!;
-                        return (
-                          <li key={item.id} className="flex justify-between gap-2">
-                            <span className="truncate">
-                              {item.name} ({SPLIT_TYPE_LABEL[assignment.splitType]})
-                            </span>
-                            <span className="tabular-currency shrink-0">{formatPaise(assignment.share)}</span>
-                          </li>
-                        );
-                      })}
-                      {chargesTotal !== 0 && (
-                        <li className="flex justify-between gap-2">
-                          <span>
-                            Tax/tip/fees ({proportion}% of the subtotal was theirs)
-                            {row.discountShare > 0 && " · discount applied"}
-                          </span>
-                          <span className="tabular-currency shrink-0">{formatPaise(chargesTotal)}</span>
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </section>
+
+      <BreakdownDialog
+        open={breakdownOpen}
+        onOpenChange={setBreakdownOpen}
+        title="How was this calculated?"
+        description="Each item is split among the people assigned to it, using that item's split method. Tax, tip, and fees are then added — and any discount subtracted — in proportion to each person's item total. Paise that don't divide evenly go one each to people in a fixed order, so shares always add up exactly."
+      >
+        <div className="space-y-4">
+          {bill.breakdown.map((row) => {
+            const theirItems = bill.items.filter((item) => item.assignments.some((a) => a.memberId === row.memberId));
+            const proportion =
+              totalAssignedItemShare > 0 ? Math.round((row.itemShare / totalAssignedItemShare) * 100) : 0;
+            const chargesTotal = row.taxShare + row.tipShare + row.serviceFeeShare - row.discountShare;
+
+            return (
+              <div key={row.memberId} className="border-t border-border pt-4 first:border-t-0 first:pt-0">
+                <div className="flex items-center justify-between">
+                  <p className="font-medium">{row.displayName}</p>
+                  <span className="tabular-currency font-semibold">{formatPaise(row.total)}</span>
+                </div>
+                <ul className="mt-1.5 space-y-1 text-xs text-muted-foreground">
+                  {theirItems.map((item) => {
+                    const assignment = item.assignments.find((a) => a.memberId === row.memberId)!;
+                    return (
+                      <li key={item.id} className="flex justify-between gap-2">
+                        <span className="truncate">
+                          {item.name} ({SPLIT_TYPE_LABEL[assignment.splitType]})
+                        </span>
+                        <span className="tabular-currency shrink-0">{formatPaise(assignment.share)}</span>
+                      </li>
+                    );
+                  })}
+                  {chargesTotal !== 0 && (
+                    <li className="flex justify-between gap-2">
+                      <span>
+                        Tax/tip/fees ({proportion}% of the subtotal was theirs)
+                        {row.discountShare > 0 && " · discount applied"}
+                      </span>
+                      <span className="tabular-currency shrink-0">{formatPaise(chargesTotal)}</span>
+                    </li>
+                  )}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      </BreakdownDialog>
 
       <BillFormDialog
         open={editOpen}
@@ -271,18 +267,15 @@ function ItemRow({ item, onEdit }: { item: BillItemDetail; onEdit: () => void })
       </div>
       {isAssigned && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {item.assignments.map((a) => {
-            const color = memberColor(a.memberId);
-            return (
-              <span
-                key={a.memberId}
-                className={cn("flex items-center gap-1.5 rounded-full py-0.5 pl-0.5 pr-2 text-xs font-medium", color.bg, color.text)}
-              >
-                <InitialsAvatar name={a.displayName} className={cn(color.bg, color.text, "h-5 w-5 ring-0 text-[10px]")} />
-                {a.displayName} · {formatPaise(a.share)}
-              </span>
-            );
-          })}
+          {item.assignments.map((a) => (
+            <span
+              key={a.memberId}
+              className="flex items-center gap-1.5 rounded-full bg-foreground/5 py-0.5 pl-0.5 pr-2 text-xs font-medium text-foreground"
+            >
+              <InitialsAvatar name={a.displayName} className="h-5 w-5 ring-0 text-[10px]" />
+              {a.displayName} · {formatPaise(a.share)}
+            </span>
+          ))}
         </div>
       )}
     </div>
