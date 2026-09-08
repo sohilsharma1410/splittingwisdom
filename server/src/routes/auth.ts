@@ -1,10 +1,17 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
 import { eq } from "drizzle-orm";
-import { registerSchema, loginSchema, updateProfileSchema, users } from "@splittingwisdom/shared";
+import {
+  registerSchema,
+  loginSchema,
+  updateProfileSchema,
+  changePasswordSchema,
+  users,
+} from "@splittingwisdom/shared";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { isUniqueViolation } from "../lib/pg-errors.js";
+import { rateLimit } from "../middleware/rate-limit.js";
 
 const router = Router();
 const BCRYPT_ROUNDS = 12;
@@ -128,5 +135,37 @@ router.patch("/me", requireAuth, async (req, res) => {
     throw err;
   }
 });
+
+router.post(
+  "/change-password",
+  requireAuth,
+  rateLimit({ max: 5, windowMs: 15 * 60 * 1000 }),
+  async (req, res) => {
+    const parsed = changePasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: { message: parsed.error.issues[0].message } });
+      return;
+    }
+    const { currentPassword, newPassword } = parsed.data;
+
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, req.session.userId!),
+    });
+    if (!user) {
+      res.status(401).json({ error: { message: "You need to be logged in." } });
+      return;
+    }
+
+    const currentMatches = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!currentMatches) {
+      res.status(401).json({ error: { message: "Current password is incorrect." } });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await db.update(users).set({ passwordHash }).where(eq(users.id, user.id));
+    res.json({ data: { success: true } });
+  },
+);
 
 export default router;

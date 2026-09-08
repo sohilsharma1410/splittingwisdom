@@ -239,8 +239,16 @@ export const settlementsRelations = relations(settlements, ({ one }) => ({
 // Zod schemas derived from the tables above — the shared validation contract
 // for both client forms and server route handlers.
 // ---------------------------------------------------------------------------
+// Emails are matched case-insensitively at login, so every write must land
+// in the same normalized form or a user who typed a different case at
+// registration than at login (or whose keyboard auto-capitalized once) gets
+// a false "incorrect password" — see server/scripts/normalize-emails.ts for
+// the one-off fix to rows written before this normalization existed.
+const normalizedEmail = (schema: z.ZodString) =>
+  schema.email("Enter a valid email address").transform((v) => v.trim().toLowerCase());
+
 export const insertUserSchema = createInsertSchema(users, {
-  email: (schema) => schema.email("Enter a valid email address"),
+  email: (schema) => normalizedEmail(schema),
   displayName: (schema) => schema.min(1, "Name is required").max(80),
 }).pick({ email: true, displayName: true });
 
@@ -249,8 +257,13 @@ export const registerSchema = insertUserSchema.extend({
 });
 
 export const loginSchema = z.object({
-  email: z.string().email("Enter a valid email address"),
+  email: normalizedEmail(z.string()),
   password: z.string().min(1, "Password is required"),
+});
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Enter your current password"),
+  newPassword: z.string().min(8, "Password must be at least 8 characters"),
 });
 
 export const selectUserSchema = createSelectSchema(users).omit({
@@ -421,3 +434,4 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type CreateBillInput = z.infer<typeof createBillSchema>;
 export type UpdateBillInput = z.infer<typeof updateBillSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

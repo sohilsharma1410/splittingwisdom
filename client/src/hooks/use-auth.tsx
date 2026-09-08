@@ -63,3 +63,13 @@ export function useUpdateProfile() {
     },
   });
 }
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (input: { currentPassword: string; newPassword: string }) =>
+      apiFetch<{ success: true }>("/api/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+  });
+}

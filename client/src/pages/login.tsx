@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Scale, Loader2 } from "lucide-react";
+import { Scale, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { apiFetch, ApiError } from "@/lib/query-client";
 import { useToast } from "@/components/ui/toast";
@@ -86,9 +87,8 @@ export default function Login() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="login-password">Password</Label>
-            <Input
+            <PasswordInput
               id="login-password"
-              type="password"
               autoComplete="current-password"
               required
               value={password}
@@ -97,7 +97,8 @@ export default function Login() {
           </div>
 
           {formError && (
-            <p role="alert" className="text-sm text-coral">
+            <p role="alert" className="flex items-start gap-1.5 text-sm text-coral">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               {formError}
             </p>
           )}

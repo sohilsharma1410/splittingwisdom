@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { NAV_ITEMS } from "@/components/shell/nav-items";
 import { EditProfileDialog } from "@/components/profile/edit-profile-dialog";
+import { ChangePasswordDialog } from "@/components/profile/change-password-dialog";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ export function Sidebar({ onNewBill }: { onNewBill: () => void }) {
   const { user, logout } = useAuth();
   const { toast } = useToast();
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -89,12 +91,19 @@ export function Sidebar({ onNewBill }: { onNewBill: () => void }) {
                 <p className="truncate text-sm font-medium">
                   {user.displayName}
                 </p>
-                <div className="flex items-center gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                   <button
                     onClick={() => setEditProfileOpen(true)}
                     className="text-muted-foreground hover:text-foreground"
                   >
                     Edit profile
+                  </button>
+                  <span className="text-muted-foreground">·</span>
+                  <button
+                    onClick={() => setChangePasswordOpen(true)}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    Change password
                   </button>
                   <span className="text-muted-foreground">·</span>
                   <button
@@ -127,6 +136,7 @@ export function Sidebar({ onNewBill }: { onNewBill: () => void }) {
         )}
       </button>
       <EditProfileDialog open={editProfileOpen} onOpenChange={setEditProfileOpen} />
+      <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
     </aside>
   );
 }

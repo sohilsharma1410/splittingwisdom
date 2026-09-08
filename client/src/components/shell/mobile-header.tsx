@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { Scale, LogOut, UserCog } from "lucide-react";
+import { Scale, LogOut, UserCog, KeyRound } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { EditProfileDialog } from "@/components/profile/edit-profile-dialog";
+import { ChangePasswordDialog } from "@/components/profile/change-password-dialog";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/components/ui/toast";
 
@@ -19,6 +20,7 @@ export function MobileHeader() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -55,6 +57,10 @@ export function MobileHeader() {
                 <UserCog className="h-4 w-4" aria-hidden="true" />
                 Edit profile
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setChangePasswordOpen(true)}>
+                <KeyRound className="h-4 w-4" aria-hidden="true" />
+                Change password
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={handleLogout} className="text-coral">
                 <LogOut className="h-4 w-4" aria-hidden="true" />
                 Log out
@@ -64,6 +70,7 @@ export function MobileHeader() {
         )}
       </div>
       <EditProfileDialog open={editProfileOpen} onOpenChange={setEditProfileOpen} />
+      <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
     </header>
   );
 }

@@ -17,11 +17,20 @@ export async function apiFetch<T>(
   // FormData bodies (receipt image uploads) must NOT get a manual
   // Content-Type — the browser sets its own with the multipart boundary.
   const isFormData = init?.body instanceof FormData;
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    credentials: "include",
-    headers: init?.body && !isFormData ? { "Content-Type": "application/json" } : undefined,
-    ...init,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      credentials: "include",
+      headers: init?.body && !isFormData ? { "Content-Type": "application/json" } : undefined,
+      ...init,
+    });
+  } catch {
+    // fetch() throws for network-level failures (offline, DNS, CORS) rather
+    // than resolving with a response — surface that distinctly from a real
+    // API error so "can't reach the server" never looks like "wrong
+    // password" or a generic, unactionable failure.
+    throw new ApiError(0, "Can't reach the server. Check your connection and try again.");
+  }
 
   const isJson = res.headers.get("content-type")?.includes("application/json");
   const body = isJson ? await res.json() : undefined;
