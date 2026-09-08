@@ -128,10 +128,16 @@ naturally keeps it warm.
    - **Output Directory**: leave as `dist` (resolved relative to the
      `client` root directory, i.e. `client/dist`, which is exactly where
      `vite build` writes)
-4. Add an **Environment Variable**:
-   | Key | Value |
-   |---|---|
-   | `VITE_API_URL` | the Render URL from step 2.7, e.g. `https://splittingwisdom-api.onrender.com` (no trailing slash) |
+4. **Do not set `VITE_API_URL`.** `client/vercel.json` proxies `/api/*` on
+   this Vercel domain straight through to the Render API, so the browser
+   only ever talks to one origin and the session cookie is first-party —
+   see the note in `client/src/lib/query-client.ts`. Setting `VITE_API_URL`
+   here would make the client call Render directly instead, bringing back
+   the cross-site cookie that mobile Safari (and increasingly Chrome/
+   Firefox) silently refuses to store — that was the actual cause of
+   "login says welcome back, then immediately looks logged out" reports.
+   If this project already has `VITE_API_URL` set from before this fix,
+   **delete it**.
 5. **Deploy**. Wait for it to finish, then open the URL Vercel gives you,
    e.g. `https://splittingwisdom.vercel.app`.
 
@@ -156,6 +162,11 @@ The API currently only trusts `http://localhost:5173` as an origin. Update it:
 - Confirm balances update live and match the numbers you expect.
 - Check the mobile layout on your phone at the Vercel URL — no horizontal
   scroll, bottom nav doesn't cover content.
+- Log in on your phone in Safari, Chrome, *and* Firefox, then navigate to
+  a second page (e.g. Activity) without touching the address bar — this is
+  the specific case that broke before the `/api/*` proxy in
+  `client/vercel.json` existed (login looked like it worked, then every
+  next screen said "You need to be logged in").
 - Toggle dark mode and reload — it should persist.
 
 If something's wrong, check both **Render → Logs** (server errors) and your

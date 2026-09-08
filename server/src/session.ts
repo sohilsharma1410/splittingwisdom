@@ -30,7 +30,13 @@ export const sessionMiddleware = session({
   cookie: {
     httpOnly: true,
     secure: isProduction,
-    sameSite: isProduction ? "none" : "lax",
+    // The client proxies /api/* through its own origin in production (see
+    // client/vercel.json) specifically so this cookie is first-party, not
+    // cross-site — the browser only ever talks to onrender.com through that
+    // proxy, never directly. "lax" is correct (and safer than "none") for
+    // that same-site traffic; only local dev still uses "none" is
+    // unnecessary too — "lax" already works cross-port on localhost.
+    sameSite: "lax",
     maxAge: 30 * 24 * 60 * 60 * 1000,
   },
 });

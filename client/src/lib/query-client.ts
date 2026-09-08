@@ -1,6 +1,15 @@
 import { QueryClient } from "@tanstack/react-query";
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+// In production the client and API are proxied to the same origin (see
+// client/vercel.json) specifically so the session cookie is first-party —
+// mobile Safari (always) and an increasing share of Chrome/Firefox installs
+// silently refuse to store a genuinely cross-site cookie no matter how
+// correctly SameSite=None/Secure is set server-side, which is exactly what
+// broke login-that-doesn't-stick on every phone browser it was tried on.
+// So the default here is "" (relative — same origin), not the old
+// cross-origin Render URL; only local dev (talking to a local server on a
+// different port, where same-origin proxying doesn't apply) needs a default.
+export const API_BASE_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://localhost:4000" : "");
 
 export class ApiError extends Error {
   status: number;
