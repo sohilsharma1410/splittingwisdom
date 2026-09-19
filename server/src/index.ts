@@ -1,7 +1,9 @@
 import "dotenv/config";
 import express, { type ErrorRequestHandler } from "express";
 import cors from "cors";
+import { sql } from "drizzle-orm";
 import { sessionMiddleware } from "./session.js";
+import { db } from "./db.js";
 import authRouter from "./routes/auth.js";
 import groupsRouter from "./routes/groups.js";
 import billsRouter from "./routes/bills.js";
@@ -29,6 +31,23 @@ app.use(sessionMiddleware);
 
 app.get("/api/health", (_req, res) => {
   res.json({ data: { status: "ok" } });
+});
+
+// Unlike /api/health above, this actually touches Postgres — it exists so
+// an external cron (see .github/workflows/keep-database-alive.yml) can hit
+// it periodically and stop Supabase's free tier from auto-pausing the
+// project after ~7 days with no database activity. A plain HTTP ping to
+// this server doesn't count as DB activity on its own: express-session
+// only reads/writes the session store for requests that carry a session
+// cookie, and every other route requires auth first.
+app.get("/api/health/db", async (_req, res) => {
+  try {
+    await db.execute(sql`select 1`);
+    res.json({ data: { status: "ok" } });
+  } catch (err) {
+    console.error("Database keep-alive ping failed:", err);
+    res.status(503).json({ error: { message: "Database unreachable." } });
+  }
 });
 
 app.use("/api/auth", authRouter);

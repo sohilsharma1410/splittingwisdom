@@ -1,0 +1,29 @@
+name: Keep database alive
+
+# Supabase's free tier auto-pauses a project after about a week with no
+# database activity, which took the whole app down until someone noticed
+# and manually restored it in the dashboard. This pings a real DB query
+# (not just the Express server) every 2 days — comfortably under the
+# 7-day threshold even if a run is delayed or skipped once.
+on:
+  schedule:
+    - cron: "23 5 */2 * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /api/health/db
+        run: |
+          # Render's free tier sleeps after ~15min idle, so the first request
+          # after a while wakes it (up to ~60s) — --retry rides that out
+          # instead of failing on a single connection hiccup during wake.
+          status=$(curl -s -o /tmp/body.txt -w "%{http_code}" --max-time 120 --retry 2 --retry-delay 5 \
+            https://splittingwisdom-api.onrender.com/api/health/db)
+          cat /tmp/body.txt
+          echo
+          if [ "$status" != "200" ]; then
+            echo "Keep-alive ping failed with HTTP $status"
+            exit 1
+          fi
