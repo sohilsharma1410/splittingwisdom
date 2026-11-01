@@ -600,7 +600,7 @@ The Pi-side steps for these, with exact commands and who does what, are in [`doc
 Owner decision 2026-11-01: Pi data and sync are deferred while the product is still changing. Nothing below is done yet; **none of it may be skipped at cutover**. Tick items here as they're completed. Sources: `docs/PI-STATUS.md` (Pi developer), the S workstream report, and this plan.
 
 **Data and schema**
-- [ ] F1 Check Supabase's real schema version (believed to be migration 0003), **back it up**, then apply migrations 0004–0007 (they add idempotency keys, sync triggers, outbox, role state, and make constraints DEFERRABLE). Render's code needs 0004 for `POST /api/bills`, so this is also required before Render is updated.
+- [x] F1 Check Supabase's real schema version (believed to be migration 0003), **back it up**, then apply migrations 0004–0007 (they add idempotency keys, sync triggers, outbox, role state, and make constraints DEFERRABLE). Render's code needs 0004 for `POST /api/bills`, so this is also required before Render is updated. *Done 2026-11-01, as reported by the collaborator.*
 - [ ] F2 Wipe the Pi's M3 test accounts and re-run `deploy/pi/copy-from-supabase.sh` (needs Funnel off) so Pi and Supabase IDs don't collide. Re-verify with `server/src/tools/verify-migration.ts`.
 - [ ] F3 Receipts: `SELECT count(*) FROM bills WHERE receipt_image_url IS NOT NULL;` on Supabase; if any, copy them to the Pi (P4.7).
 - [ ] F4 Pi Postgres runs with `timezone='UTC'`; restores use `SET sw.sync_apply=on` or `--disable-triggers` (S report #3, #4).

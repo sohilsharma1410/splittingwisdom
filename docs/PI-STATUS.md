@@ -10,7 +10,7 @@ command that has to run there goes through them.
 
 ## Action items for the Pi (start here)
 
-Everything the Pi developer and the owner need to do next, in order, against `main` @ `937ecfd` (2026-11-01).
+Everything the Pi developer and the owner need to do next, in order, against `main` (2026-11-01).
 The repo is public: **never put keys, passwords, the tailnet name or the Funnel URL in it.** Secrets go in
 `deploy/pi/.env` on the Pi (git-ignored, `chmod 600`). `<funnel-url>` below means the Pi's public URL; ask the owner.
 The master before-go-live list is Appendix F of `PLAN-PI-PRODUCTIONIZATION.md` (same IDs).
@@ -25,7 +25,7 @@ Branch `main` now contains everything from `dev-pi`. You already have the Pi sta
 |---|---|---|
 | Settlements | Record payments, partial payments, payment history, derived Settled/Pending | New migrations; client + API |
 | Simplify debts | "Settle up" on a group; paying a suggestion is recorded as the chain of real debts | Client + API |
-| **Receipt scanning (OCR)** | `/bill/new/scan`: photo -> model reads it -> user checks -> confirm. Model is swappable (Gemini default, or a local OpenAI-compatible model) | **Needs `GEMINI_API_KEY` in the Pi `.env`** |
+| **Receipt scanning (OCR)** | `/bill/new/scan`: photo -> read -> user checks -> confirm. Local OCR is the primary reader on the Pi, in its own `ocr` container (D18). Gemini or another model is available elsewhere | `docker compose build` adds the container. **No key needed on the Pi** |
 | PWA | Installable app, offline shell, client-side failover (off unless both URLs are set) | Build args only |
 | Security | Login rate limits (per IP + email), `helmet`, receipt-photo ownership check, idempotency keys on creating POSTs | Automatic |
 | Database | Migrations **0004-0007**: idempotency keys, sync triggers, `deletion_log`, outbox, `system_state`, DEFERRABLE constraints | `migrate` service applies them |
@@ -41,9 +41,9 @@ cd ~/splittingwisdom && git pull origin main
 cd deploy/pi
 docker compose build            # ~10 min if dependencies changed
 docker compose up -d            # reruns the migrate service first: applies 0004-0007
-docker compose ps               # postgres + api healthy; migrate exited (0)
+docker compose ps               # postgres + api + ocr healthy; migrate exited (0)
 docker compose logs migrate     # should say migrations applied
-./smoke.sh                      # QA-1; expect all checks pass (the script has grown to 54 checks)
+./smoke.sh                      # QA-1; expect 73/73, plus the restart, isolation and OCR-down checks
 ```
 
 - [ ] **PI-1** Pull `main`, rebuild, bring the stack up. Paste the `docker compose ps` output and the `smoke.sh` result into `docs/PI-STATUS.md`.
@@ -55,32 +55,19 @@ If the `migrate` step fails, stop and read `docker compose logs migrate`. Do **n
 
 ---
 
-### 2. Turn on receipt scanning (OCR) `[PI]` + `[OWNER]`
+### 2. Receipt scanning (OCR) `[PI]` + `[OWNER]`
 
-OCR needs only an API key on the Pi. Receipts are stored locally (`STORAGE_DRIVER=local`, the `receipts` volume), so **no Supabase Storage is needed**.
+The Pi reads receipts itself, so it needs **no API key and no Supabase Storage**. `docker-compose.yml` runs the `ocr` container and sets `OCR_PROVIDER=rapidocr`. Photos stay on the Pi (D18). The Pi doesn't fall back to Gemini: failed scans go to manual entry.
 
-- [ ] **PI-5** `[OWNER]` Send the Gemini key to the Pi developer privately (not in the repo, issues or chat logs you keep). Tell them if it's a new key; the one used during testing should be rotated at https://aistudio.google.com/apikey once testing is done.
-- [ ] **PI-6** `[PI]` Edit `deploy/pi/.env`, set `GEMINI_API_KEY=<the key>`, then:
+- **PI-5, PI-6** No longer needed: there's no key to send or set on the Pi.
+- [ ] **PI-7** `[PI]` Install the weekly cleanup of abandoned scan photos (`deploy/pi/README.md`).
+- [ ] **PI-8** `[PI]` Check OCR is healthy:
   ```bash
-  cd deploy/pi && docker compose up -d api
+  docker compose ps ocr
+  docker compose logs api | grep -i "local ocr" | tail
   ```
-  (`env_file: .env` passes it through; no compose change needed. Do **not** `build` just for this.)
-- [ ] **PI-7** `[PI]` Optional model settings, all in the same `.env` (defaults are right; only change if scanning fails):
-
-  | Variable | Default | Use |
-  |---|---|---|
-  | `GEMINI_MODEL` / `OCR_MODEL` | `gemini-3.5-flash` | Google retires models. `gemini-2.0-flash` is gone and 2.5 is closed to new users. `gemini-3.7-flash` timed out on real receipts; 3.8 was overloaded |
-  | `OCR_FALLBACK_MODEL` | `gemini-3.5-flash-lite` | Tried once if the main model stays overloaded (503). `none` turns it off |
-  | `OCR_TIMEOUT_MS` | `60000` | Raise for slower models |
-  | `OCR_PROVIDER` / `OCR_BASE_URL` / `OCR_API_KEY` | `gemini` | Only to point at a local OpenAI-compatible model (Ollama, LM Studio, llama.cpp). Not needed for Gemini |
-
-- [ ] **PI-8** `[PI]` Check the key and model from inside the container (never prints the key):
-  ```bash
-  docker compose exec api node -e "fetch('http://127.0.0.1:4000/api/health/db').then(r=>console.log('api ok', r.status))"
-  docker compose logs api | grep -i "ocr" | tail
-  ```
-  A failure line reads `OCR extraction failed (gemini:<model>): <reason>`. Typical reasons: `404 ... no longer available` (change the model), `API key not valid` (bad key), `503 ... high demand` (Google busy; it retries and falls back by itself).
-- [ ] **PI-9** `[OWNER]` Test on a phone against `<funnel-url>`: log in -> New Bill -> **Scan a receipt instead** -> take a photo. Expect "Reading receipt…" for ~5-15 s, then the review screen with the items. Confirm saves a bill with the photo attached ("View receipt" on the bill opens it).
+  A failure line reads `Local OCR failed: <reason>`. It's never logged with the photo or its text.
+- [ ] **PI-9** `[OWNER]` Test on a phone against `<funnel-url>`: log in -> New Bill -> **Scan a receipt instead** -> take a photo. Expect "Reading receipt…" for a few seconds, then the review screen with the items. Confirm saves a bill with the photo attached ("View receipt" on the bill opens it).
   - Limits to know: JPG/PNG/WebP only (iPhone HEIC is **not** supported yet; set the camera to "Most Compatible"); 10 MB max (the app shrinks photos first); 10 scans per user per hour.
 - [ ] **PI-10** `[PI]` Make sure the receipts volume is in your backups (P6.3): it holds the only copy of every photo. Receipts are **not** copied to the standby yet (plan S2.5), so they won't show during an outage.
 
@@ -160,12 +147,12 @@ Owner decision: Pi data and sync are deferred while the product is still changin
 | Variable | Needed now? | Notes |
 |---|---|---|
 | `POSTGRES_PASSWORD`, `SESSION_SECRET` | Yes (already set) | `openssl rand -hex 32` each |
-| `GEMINI_API_KEY` | **Yes, for scanning** | Section 2 |
-| `GEMINI_MODEL`, `OCR_*` | No | Defaults are good; see PI-7 |
+| `GEMINI_API_KEY` | No | Not used for scanning on the Pi. Render uses Gemini during an outage, with these settings on Render: `GEMINI_API_KEY`, `GEMINI_MODEL`, `OCR_FALLBACK_MODEL`, `OCR_TIMEOUT_MS` |
+| `OCR_MODEL`, `OCR_BASE_URL`, `OCR_API_KEY` | No | Only for trying a local vision model. Setting `OCR_PROVIDER` here would override nothing, because Compose sets it |
 | `VITE_PRIMARY_URL`, `VITE_STANDBY_URL` | Only for the fallback test | Build-time; rebuild after changing; both or neither |
 | `APP_ROLE`, `SYNC_TARGET_DATABASE_URL`, `SYNC_TARGET_SSL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` | **No: leave off until F6** | Setting them connects the Pi to real Supabase |
 
-Set by `docker-compose.yml` already (don't duplicate): `DATABASE_URL`, `DATABASE_SSL=off`, `DATABASE_POOLER=false`, `SERVE_CLIENT=true`, `STORAGE_DRIVER=local`, `RECEIPTS_DIR`.
+Set by `docker-compose.yml` already (don't duplicate): `DATABASE_URL`, `DATABASE_SSL=off`, `DATABASE_POOLER=false`, `SERVE_CLIENT=true`, `STORAGE_DRIVER=local`, `RECEIPTS_DIR`, `OCR_PROVIDER=rapidocr`, `OCR_URL`.
 
 ---
 
@@ -181,7 +168,7 @@ Set by `docker-compose.yml` already (don't duplicate): `DATABASE_URL`, `DATABASE
 
 ### 8. What you are NOT waiting on anyone for
 
-OCR, the review screen, settlements, simplify debts and the PWA are finished and tested; the owner runs them locally without the Pi. You're needed for: the Pi `.env` key (PI-6), the rebuilds (PI-1, PI-15), the crash/power tests (PI-17..20), and section 5.
+OCR, the review screen, settlements, simplify debts and the PWA are finished and tested; the owner runs them locally without the Pi. You're needed for: the rebuilds (PI-1, PI-15), the crash/power tests (PI-17..20), and section 5.
 
 ---
 
@@ -193,8 +180,8 @@ OCR, the review screen, settlements, simplify debts and the PWA are finished and
 | M2 Migration rehearsal | Done, except P4.5 and P4.7 | On the Pi against real Supabase: `copy-from-supabase.sh` ended `RESULT: OK` (table below), then `smoke.sh` 62/62 on the copy |
 | M3 Funnel and PWA | Done | Owner-reported, no logs kept: see below |
 | M4 Sync and failover | On hold (D18) | The code is on `main` and Render runs it, but sync isn't switched on |
-| Local OCR | Steps 1-3 passed on the Pi, on `dev-ocr`. Step 4 needs real bills | See below |
-| Merge to `main` | Waiting on the collaborator's UI work (D19) | See "Merge plan" |
+| Local OCR | On `main`. Passed on the Pi before the merges, not yet rerun since. Real bills untested | See below |
+| Merge to `main` | Done (D19) | See "Merge plan" |
 
 **M2 row counts, identical on the Pi and Supabase:** users 25, groups 11,
 group_members 28, bills 11, bill_items 21, item_assignments 53, settlements 0. Rows
@@ -281,14 +268,11 @@ would delete most photos, so restore the database before copying receipts at cut
 
 Agreed by both collaborators (D18, D19). Local OCR is the primary and Gemini is the secondary.
 
-1. The collaborator finishes the UI screens and merges to `main`.
-2. `main` merges into `dev-ocr`.
-3. Gates and `deploy/pi/smoke.sh` pass, then `dev-ocr` merges to `main`. Render and Vercel deploy on every push to `main`.
-4. Both collaborators update, check they're on the same page, and decide what's next.
+1. Done: the collaborator merged the UI screens to `main`.
+2. Done: `main` merged into `dev-ocr`, and `dev-ocr` merged to `main`. Render and Vercel deploy on every push to `main`.
+3. Next: both collaborators update, check they're on the same page, and decide what's next.
 
-**Prepared so far:** `dev-ocr` has `dev-pi` merged in, up to `50c5d67`, and local OCR fills the review screen's format.
-To stay in step, run `git merge origin/dev-pi` on `dev-ocr` as more arrives. Build, type check and unit tests pass. Integration tests pass apart from the two intermittent failures below. `qa-smoke` passes 73/73
-through the real OCR service on x86. Not yet checked: the merged code on the Pi, and the scan screen in a browser with local OCR.
+**Done:** both sides are on `main`. Before merging, gates passed and `qa-smoke` passed 73/73 through the real OCR service on x86. Still to do: run the merged code on the Pi, and try the scan screen in a browser with local OCR.
 
 **How they fit together:**
 
@@ -305,7 +289,7 @@ through the real OCR service on x86. Not yet checked: the merged code on the Pi,
 
 - **When Gemini is used:** the Pi reads with local OCR only, and failed scans go to manual entry. Render uses Gemini during an
   outage, because it can't run local OCR. A Pi that falls back to Gemini would send photos to Google. The owner agreed; the
-  collaborator should confirm.
+  collaborator should confirm, since their notes had assumed Gemini on the Pi.
 - **`dev-pi` tests use a real receipt's values** (`client/src/lib/receipt-draft.test.ts`), including a real merchant name. No
   photo or personal details were found, but the repo is public, so confirm that's fine.
 
@@ -328,7 +312,7 @@ ends up blank, which is the case for adding a small model. No model has been tri
 
 | | Pi | Render and Vercel | Supabase |
 |---|---|---|---|
-| Code | `dev-ocr` | `main` (`cd13037` when checked): settlements and sync code, no review screen or local OCR yet | Migrations 0004-0007 not confirmed |
+| Code | Should be `main`, once updated (section 1) | `main`: Gemini reads receipts here if `GEMINI_API_KEY` is set | All 8 migrations, as reported by the collaborator |
 | Data | M3 test accounts only | Live app | The owner says it holds only dummy data for now |
 | Sync | Off | Off | Not receiving anything |
 
@@ -366,8 +350,8 @@ ends up blank, which is the case for adding a small model. No model has been tri
 |---|---|---|
 | **Failback test race** | See below. Fix first in M4 | Collaborator, or M4 |
 | **Pi data before sync** | The Pi holds M3 test accounts, whose IDs would collide with Supabase's rows. Before starting sync, wipe the Pi and rerun `copy-from-supabase.sh`, which needs Funnel off | M4 |
-| **Supabase schema** | **Check this now.** `main` is live on Render, but the collaborator's checklist (F1) still lists migrations 0004-0007 as not applied. Check the version, back up, and apply them | Owner and collaborator |
-| **Standby code** | Render and Vercel must run the same build as the Pi (S7.5). They're now on `main`, while the Pi is on `dev-ocr` | After D19 |
+| **Supabase schema** | Done 2026-11-01 with a backup, as reported by the collaborator. All 8 migrations | Done |
+| **Standby code** | Render and Vercel must run the same build as the Pi (S7.5). All three follow `main` once the Pi is updated | Pi update |
 | **Failover URLs** | Left out of the Pi build on purpose (D17). Set `VITE_PRIMARY_URL` and `VITE_STANDBY_URL` and rebuild once sync runs | M4 |
 | **Vercel bot check** | Scripted requests to `/api/*` through Vercel got a 429 challenge page (`x-vercel-error: hibernate-rate-limited` on `/api/health`), while Render answered directly. Check in a browser. Could also block keep-alive pings through Vercel (S1.3) | Owner to check |
 | **Receipts on Supabase (P4.7)** | Skipped because the data is dummy. Recheck at cutover: `SELECT count(*) FROM bills WHERE receipt_image_url IS NOT NULL;` | Cutover |
