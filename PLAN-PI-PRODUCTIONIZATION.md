@@ -332,7 +332,7 @@ Source of truth for scope/acceptance: `PHASE-6-settle-ship.md` §1, §1a, §2, �
 
 ### D3 — Phase 5 completion: OCR review screen
 Source: `PHASE-5-ocr.md` §3 and `PLAN` notes in repo history (Checkpoint C).
-- [ ] D3.1 **Pre-flight:** make model configurable `GEMINI_MODEL`; confirm the model still exists (current default `gemini-2.0-flash` may be retired) and pick the current free-tier Flash model; add a startup log of the model in use.
+- [x] D3.1 **Pre-flight:** make model configurable `GEMINI_MODEL`; confirm the model still exists (current default `gemini-2.0-flash` may be retired) and pick the current free-tier Flash model; add a startup log of the model in use.
 - [ ] D3.2 With Pi: `STORAGE_DRIVER=local` (P3.2) — **no Supabase bucket needed**; Part 0 reduces to `GEMINI_API_KEY`. HUMAN: provide key; set in Pi + Render env.
 - [ ] D3.3 **5-receipt extraction test** (crisp, crumpled, long grocery, handwritten, dim) via `curl` to `POST /api/bills/extract` (field `image`); record accuracy table (items, prices, total, `totalsMismatch`); owner reviews before UI work.
 - [ ] D3.4 iOS photos: test `<input accept="image/jpeg,image/png,image/webp" capture>` on iPhone (HEIC→JPEG conversion behaviour); decide whether HEIC support is needed now that iOS PWA users exist.
