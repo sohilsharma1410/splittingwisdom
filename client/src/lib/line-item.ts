@@ -11,6 +11,8 @@ export interface LineFields {
   quantity: string;
   /** Rupees per unit, only while it's being typed; otherwise it's derived from price and quantity. */
   unit?: string;
+  /** The last valid quantity, kept while the quantity box is empty or mid-edit so the cost per unit isn't lost. */
+  qtyBasis?: string;
 }
 
 function toPaise(text: string | undefined): number | null {
@@ -46,16 +48,21 @@ export function unitText(line: LineFields): string {
 
 /** Quantity changed: the unit cost stays put and the total follows. */
 export function withQuantity<T extends LineFields>(line: T, quantity: string): T {
-  const next = { ...line, quantity, unit: undefined };
   const qty = toQuantity(quantity);
-  if (qty === null) return next; // empty or mid-typing: leave the total alone
-  const unit = line.unit !== undefined ? toPaise(line.unit) : exactUnitPaise(line.price, line.quantity);
+  const oldQty = toQuantity(line.quantity) !== null ? line.quantity : line.qtyBasis;
+  if (qty === null) {
+    // Cleared or mid-typing: leave the total alone, but remember the unit cost to come back to.
+    const unit = line.unit ?? (oldQty ? unitText({ price: line.price, quantity: oldQty }) : "");
+    return { ...line, quantity, unit: unit || undefined, qtyBasis: oldQty };
+  }
+  const next = { ...line, quantity, unit: undefined, qtyBasis: undefined };
+  const unit = line.unit !== undefined ? toPaise(line.unit) : oldQty ? exactUnitPaise(line.price, oldQty) : null;
   if (unit !== null) return { ...next, price: paiseToRupeeInput(unit * qty) };
   // An uneven unit cost: keep the same cost per unit by scaling the total, rounded to the paise.
   const total = toPaise(line.price);
-  const oldQty = toQuantity(line.quantity);
-  if (total === null || oldQty === null) return next;
-  return { ...next, price: paiseToRupeeInput(Math.round((total * qty) / oldQty)) };
+  const before = oldQty ? toQuantity(oldQty) : null;
+  if (total === null || before === null) return next;
+  return { ...next, price: paiseToRupeeInput(Math.round((total * qty) / before)) };
 }
 
 /** Unit cost changed: the total is that cost times the quantity. */
@@ -63,10 +70,10 @@ export function withUnit<T extends LineFields>(line: T, unit: string): T {
   const paise = toPaise(unit);
   const qty = toQuantity(line.quantity);
   if (paise === null || qty === null) return { ...line, unit };
-  return { ...line, unit, price: paiseToRupeeInput(paise * qty) };
+  return { ...line, unit, qtyBasis: undefined, price: paiseToRupeeInput(paise * qty) };
 }
 
 /** Total changed by hand: the unit cost is re-derived from it. */
 export function withTotal<T extends LineFields>(line: T, price: string): T {
-  return { ...line, price, unit: undefined };
+  return { ...line, price, unit: undefined, qtyBasis: undefined };
 }

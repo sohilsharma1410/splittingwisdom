@@ -36,4 +36,15 @@ describe("line item", () => {
     expect(edited.unit).toBeUndefined();
     expect(unitText(edited)).toBe("20.00");
   });
+  it("clearing the quantity box and retyping keeps the cost each, not the total", () => {
+    const cleared = withQuantity(row("550.00", "11"), "");
+    expect(cleared.price).toBe("550.00"); // untouched while empty
+    expect(withQuantity(cleared, "1").price).toBe("50.00");
+    expect(withQuantity(withQuantity(cleared, "1"), "12").price).toBe("600.00");
+    expect(withQuantity(withQuantity(row("659.00", "1"), ""), "2").price).toBe("1318.00");
+  });
+  it("same for an uneven line", () => {
+    const cleared = withQuantity(row("100.00", "3"), "");
+    expect(withQuantity(cleared, "6").price).toBe("200.00");
+  });
 });

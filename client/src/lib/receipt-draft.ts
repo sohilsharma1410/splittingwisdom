@@ -12,6 +12,7 @@ export interface DraftItem {
   quantity: string;
   /** Rupees per unit while it's being typed; otherwise derived from price and quantity (see line-item.ts). */
   unit?: string;
+  qtyBasis?: string;
   /** The model wasn't sure about this line. */
   low: boolean;
 }

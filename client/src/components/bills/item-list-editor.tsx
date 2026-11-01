@@ -11,6 +11,7 @@ export interface ItemRow {
   name: string;
   price: string; // rupee text, e.g. "12.99"
   quantity: string; // whole number text, defaults to "1"
+  qtyBasis?: string; // see lib/line-item.ts
   unit?: string; // rupees each, only while typed; otherwise derived (see lib/line-item.ts)
 }
 
