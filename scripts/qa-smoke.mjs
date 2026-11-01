@@ -169,6 +169,14 @@ async function main() {
     check("outsider gets no receipt URL -> 404", r.status === 404, `status ${r.status}`);
   }
 
+  // --- receipt photo ownership: you can only attach a photo YOU uploaded -------------
+  r = await B.req("POST", "/api/bills", { ...bill, description: "steals A's photo", receiptImageUrl: `${aId}/abcdefghijklmnop.jpg` });
+  check("cannot attach someone else's receipt photo path (400)", r.status === 400, `status ${r.status}`);
+  r = await B.req("POST", "/api/bills", { ...bill, description: "junk path", receiptImageUrl: "../../etc/passwd" });
+  check("junk receipt path rejected (400)", r.status === 400, `status ${r.status}`);
+  r = await B.req("POST", "/api/bills", { ...bill, description: "own photo", receiptImageUrl: `${bId}/abcdefghijklmnop.jpg` });
+  check("your own uploaded photo path is accepted and the bill shows a receipt", r.status === 201, JSON.stringify(r).slice(0, 160));
+
   // --- hardening -------------------------------------------------------------
   const hdr = await fetch(`${BASE}/api/health`);
   check("security headers present (nosniff) and X-Powered-By hidden",

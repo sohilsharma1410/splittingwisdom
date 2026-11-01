@@ -32,11 +32,17 @@ echo "== build shared + client (failover URLs baked in)"
 npm run build --workspace=shared >/dev/null
 (cd client && VITE_PRIMARY_URL=http://localhost:4273 VITE_STANDBY_URL=http://127.0.0.1:4274 npx vite build >/dev/null)
 
+# OCR for the browser tests: a fake local vision model, so no key, network or spend is needed
+# (and the app's "point at a local model" path is what gets exercised).
+(nohup node scripts/fake-vision-model.mjs 4290 > "$ROOT/.localdb/fake-model.log" 2>&1 & echo $! > "$PIDS/fake-model.pid"); started+=("$PIDS/fake-model.pid")
+mkdir -p "$ROOT/.localdb/e2e-receipts"
+
 start_api() { # port
   cat > "$ROOT/.localdb/start-api-$1.sh" <<SH
 #!/usr/bin/env bash
 cd "$ROOT/server"
 DATABASE_URL="$DB_URL" SESSION_SECRET=local-test-secret PORT=$1 NODE_ENV=development \\
+  OCR_PROVIDER=ollama OCR_BASE_URL=http://127.0.0.1:4290/v1 OCR_MODEL=fake-vision STORAGE_DRIVER=local RECEIPTS_DIR="$ROOT/.localdb/e2e-receipts" \\
   nohup npx tsx src/index.ts > "$ROOT/.localdb/api-$1.log" 2>&1 &
 echo \$! > "$PIDS/api-$1.pid"
 SH

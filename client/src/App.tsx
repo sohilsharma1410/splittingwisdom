@@ -8,6 +8,7 @@ import Activity from "@/pages/activity";
 import Balances from "@/pages/balances";
 import BalanceDetail from "@/pages/balance-detail";
 import BillDetail from "@/pages/bill-detail";
+import ScanBill from "@/pages/scan-bill";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import JoinGroup from "@/pages/join-group";
@@ -59,6 +60,13 @@ export default function App() {
         <ProtectedRoute>
           <AppShell>
             <BalanceDetail />
+          </AppShell>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/bill/new/scan">
+        <ProtectedRoute>
+          <AppShell>
+            <ScanBill />
           </AppShell>
         </ProtectedRoute>
       </Route>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeTotalsMismatch, type ExtractedItem } from "./gemini.js";
+import { computeTotalsMismatch, type ExtractedItem } from "./receipt-ocr.js";
 
 const item = (price: number, quantity = 1): ExtractedItem => ({ name: "x", price, quantity, confidence: "high" });
 const none = { tax: null, tip: null, serviceFee: null, discount: null };
