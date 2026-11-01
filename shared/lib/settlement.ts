@@ -187,33 +187,135 @@ export interface SuggestedPayment {
   amount: number;
 }
 
+// A debt graph: graph.get(debtor)?.get(creditor) = paise the debtor owes the creditor.
+type DebtGraph = Map<number, Map<number, number>>;
+
+function debtGraph(pairwise: PairwiseBalance[]): DebtGraph {
+  const graph: DebtGraph = new Map();
+  const add = (debtor: number, creditor: number, amount: number) => {
+    if (!graph.has(debtor)) graph.set(debtor, new Map());
+    graph.get(debtor)!.set(creditor, amount);
+  };
+  for (const { memberIdA, memberIdB, netAmount } of pairwise) {
+    if (netAmount > 0) add(memberIdA, memberIdB, netAmount);
+    else if (netAmount < 0) add(memberIdB, memberIdA, -netAmount);
+  }
+  return graph;
+}
+
+/** Fewest-hops path from `from` to the best `isTarget` node, over edges with debt left. Deterministic (lowest ids first). */
+function findDebtPath(
+  graph: DebtGraph,
+  from: number,
+  pickTarget: (reachable: number[]) => number | null,
+): number[] | null {
+  const parent = new Map<number, number>([[from, from]]);
+  const order: number[] = [];
+  const queue = [from];
+  while (queue.length > 0) {
+    const node = queue.shift()!;
+    const next = [...(graph.get(node) ?? [])].filter(([, cap]) => cap > 0).map(([to]) => to).sort((x, y) => x - y);
+    for (const to of next) {
+      if (parent.has(to)) continue;
+      parent.set(to, node);
+      order.push(to);
+      queue.push(to);
+    }
+  }
+  const target = pickTarget(order);
+  if (target === null) return null;
+  const path = [target];
+  while (path[0] !== from) path.unshift(parent.get(path[0])!);
+  return path;
+}
+
 /**
- * The minimal-ish set of payments that settles everyone's net position:
- * repeatedly match the largest debtor with the largest creditor (greedy
- * min-cash-flow). Ties go to the lowest member id so the same balances always
- * give the same suggestions. Total money moved equals the total owed overall.
+ * Pays `amount` from `from` to `to` THROUGH the debts that actually exist,
+ * as a set of ordinary settlements — one per debt that gets paid down. If Ann
+ * owes Bob, Bob owes Cat and Cat owes Dan (₹100 each), "Ann pays Dan ₹100"
+ * becomes Ann→Bob, Bob→Cat and Cat→Dan (₹100 each): every hop is a real debt
+ * being cleared, so afterwards nothing odd is left behind. Returns null when
+ * the debts can't carry that much from `from` to `to`.
+ */
+export function routeThroughDebts(
+  pairwise: PairwiseBalance[],
+  from: number,
+  to: number,
+  amount: number,
+): SuggestedPayment[] | null {
+  if (from === to || amount <= 0) return null;
+  const original = debtGraph(pairwise);
+  // Residual capacities (Edmonds–Karp): pushing along u→v also opens v→u, so a
+  // later path can undo part of an earlier one rather than being blocked by it.
+  const residual: DebtGraph = new Map();
+  const ensure = (u: number, v: number) => {
+    if (!residual.has(u)) residual.set(u, new Map());
+    if (!residual.get(u)!.has(v)) residual.get(u)!.set(v, 0);
+  };
+  for (const [u, edges] of original) for (const [v, cap] of edges) { ensure(u, v); ensure(v, u); residual.get(u)!.set(v, cap); }
+
+  let remaining = amount;
+  while (remaining > 0) {
+    const path = findDebtPath(residual, from, (reachable) => (reachable.includes(to) ? to : null));
+    if (!path) return null;
+    let push = remaining;
+    for (let i = 0; i + 1 < path.length; i++) push = Math.min(push, residual.get(path[i])!.get(path[i + 1])!);
+    for (let i = 0; i + 1 < path.length; i++) {
+      const u = path[i], v = path[i + 1];
+      residual.get(u)!.set(v, residual.get(u)!.get(v)! - push);
+      residual.get(v)!.set(u, residual.get(v)!.get(u)! + push);
+    }
+    remaining -= push;
+  }
+
+  const edges: SuggestedPayment[] = [];
+  for (const [u, outgoing] of original) {
+    for (const [v, cap] of outgoing) {
+      const flow = cap - residual.get(u)!.get(v)!;
+      if (flow > 0) edges.push({ fromMemberId: u, toMemberId: v, amount: flow });
+    }
+  }
+  return edges.sort((a, b) => a.fromMemberId - b.fromMemberId || a.toMemberId - b.toMemberId);
+}
+
+/**
+ * The payments that would settle everyone's net position, found as paths
+ * through the debts that exist (so each one can be paid as a chain — see
+ * routeThroughDebts). Never more than the number of direct debts. Ties go to
+ * the lowest member id, so the same balances always give the same suggestions.
  */
 export function simplifyDebts(pairwise: PairwiseBalance[]): SuggestedPayment[] {
+  const graph = debtGraph(pairwise);
   const net = netPositions(pairwise);
-  const byAmountThenId = (a: [number, number], b: [number, number]) => b[1] - a[1] || a[0] - b[0];
-  const creditors = [...net].filter(([, v]) => v > 0).sort(byAmountThenId);
-  const debtors = [...net].filter(([, v]) => v < 0).map(([id, v]): [number, number] => [id, -v]).sort(byAmountThenId);
+  const deficit = new Map([...net].filter(([, v]) => v < 0).map(([id, v]) => [id, -v]));
+  const credit = new Map([...net].filter(([, v]) => v > 0));
+  const paid = new Map<string, number>();
 
-  const payments: SuggestedPayment[] = [];
-  while (creditors.length > 0 && debtors.length > 0) {
-    const [debtorId, owes] = debtors[0];
-    const [creditorId, owed] = creditors[0];
-    const amount = Math.min(owes, owed);
-    payments.push({ fromMemberId: debtorId, toMemberId: creditorId, amount });
-
-    debtors[0] = [debtorId, owes - amount];
-    creditors[0] = [creditorId, owed - amount];
-    if (debtors[0][1] === 0) debtors.shift();
-    if (creditors[0][1] === 0) creditors.shift();
-    debtors.sort(byAmountThenId);
-    creditors.sort(byAmountThenId);
+  while (true) {
+    const debtors = [...deficit].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+    if (debtors.length === 0) break;
+    const [debtor, owes] = debtors[0];
+    const path = findDebtPath(graph, debtor, (reachable) => {
+      const options = reachable.filter((id) => (credit.get(id) ?? 0) > 0).sort((a, b) => credit.get(b)! - credit.get(a)! || a - b);
+      return options[0] ?? null;
+    });
+    if (!path) break; // can't happen while net positions are consistent; never loop forever
+    const creditor = path[path.length - 1];
+    let push = Math.min(owes, credit.get(creditor)!);
+    for (let i = 0; i + 1 < path.length; i++) push = Math.min(push, graph.get(path[i])!.get(path[i + 1])!);
+    for (let i = 0; i + 1 < path.length; i++) graph.get(path[i])!.set(path[i + 1], graph.get(path[i])!.get(path[i + 1])! - push);
+    deficit.set(debtor, owes - push);
+    credit.set(creditor, credit.get(creditor)! - push);
+    const key = `${debtor}>${creditor}`;
+    paid.set(key, (paid.get(key) ?? 0) + push);
   }
-  return payments;
+
+  return [...paid]
+    .map(([key, amount]) => {
+      const [fromMemberId, toMemberId] = key.split(">").map(Number);
+      return { fromMemberId, toMemberId, amount };
+    })
+    .sort((a, b) => b.amount - a.amount || a.fromMemberId - b.fromMemberId || a.toMemberId - b.toMemberId);
 }
 
 /**

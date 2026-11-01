@@ -9,6 +9,7 @@ import {
   listDirectDebts,
   maxSettlementAmount,
   netPositions,
+  routeThroughDebts,
   simplifyDebts,
   type BillForStatus,
 } from "./settlement.js";
@@ -208,14 +209,14 @@ describe("simplifyDebts", () => {
     expect(simplifyDebts(computeBalances(bills, []))).toEqual(simplifyDebts(computeBalances([...bills].reverse(), [])));
   });
 
-  it("property: following every suggestion zeroes everyone, moves exactly the money owed, and needs < n payments (200 random groups)", () => {
+  it("property: the first suggestion can always be paid as a chain; repeating that zeroes everyone and never needs more payments than debts (300 random groups)", () => {
     let seed = 20260101;
     const rand = () => {
       seed = (seed * 1664525 + 1013904223) % 4294967296;
       return seed / 4294967296;
     };
     const members = [A, B, C, D, E];
-    for (let trial = 0; trial < 200; trial++) {
+    for (let trial = 0; trial < 300; trial++) {
       const bills: BillForBalance[] = [];
       for (let i = 0, n = 1 + Math.floor(rand() * 6); i < n; i++) {
         const participants = members.filter(() => rand() < 0.6);
@@ -229,21 +230,75 @@ describe("simplifyDebts", () => {
       const net = netPositions(pw);
       const owedTotal = [...net.values()].filter((v) => v > 0).reduce((s, v) => s + v, 0);
       expect(suggestions.reduce((s, p) => s + p.amount, 0)).toBe(owedTotal);
-      const nonZero = [...net.values()].filter((v) => v !== 0).length;
-      expect(suggestions.length).toBeLessThanOrEqual(Math.max(0, nonZero - 1));
+      expect(suggestions.length).toBeLessThanOrEqual(countDirectDebts(pw));
       for (const p of suggestions) expect(p.amount).toBeGreaterThan(0);
 
-      // Every suggested payment must be one the server would accept…
+      // Pay suggestions the way the app does: take what's suggested NOW, pay it as a chain along
+      // real debts, then look again (paying one can change the others, so they're recomputed).
       let applied: SettlementForBalance[] = [];
-      for (const p of suggestions) {
+      for (let step = 0; ; step++) {
         const now = computeBalances(bills, applied);
+        const [p] = simplifyDebts(now);
+        if (!p) break;
+        expect(step, `trial ${trial} did not converge`).toBeLessThan(40);
         expect(checkSettlement(now, p.fromMemberId, p.toMemberId, p.amount).ok).toBe(true);
-        applied = [...applied, settle(p.fromMemberId, p.toMemberId, p.amount)];
+        const hops = routeThroughDebts(now, p.fromMemberId, p.toMemberId, p.amount);
+        expect(hops, `trial ${trial}: ${JSON.stringify(p)}`).not.toBeNull();
+        // Every hop is a debt that really exists, paid down — never more than owed.
+        for (const h of hops!) expect(h.amount).toBeLessThanOrEqual(directDebt(now, h.fromMemberId, h.toMemberId));
+        applied = [...applied, ...hops!.map((h) => settle(h.fromMemberId, h.toMemberId, h.amount))];
       }
-      // …and following them all leaves nobody owing or owed anything overall.
-      const after = netPositions(computeBalances(bills, applied));
-      expect([...after.values()].every((v) => v === 0)).toBe(true);
+      const after = computeBalances(bills, applied);
+      expect([...netPositions(after).values()].every((v) => v === 0)).toBe(true);
+      // Whatever debts are left must be pure loops (cancelling each other), nothing one-sided.
+      const owes = new Map<number, number>(), owed = new Map<number, number>();
+      for (const d of listDirectDebts(after)) {
+        owes.set(d.fromMemberId, (owes.get(d.fromMemberId) ?? 0) + d.amount);
+        owed.set(d.toMemberId, (owed.get(d.toMemberId) ?? 0) + d.amount);
+      }
+      for (const id of members) expect(owes.get(id) ?? 0).toBe(owed.get(id) ?? 0);
     }
+  });
+});
+
+describe("routeThroughDebts — paying a suggestion as the chain it stands for", () => {
+  const chain = computeBalances(
+    [bill(B, rs("200"), [A, B]), bill(C, rs("200"), [B, C]), bill(D, rs("200"), [C, D])],
+    [],
+  ); // Ann→Bob 100, Bob→Cat 100, Cat→Dan 100
+
+  it("turns 'Ann pays Dan ₹100' into one settlement per real debt, leaving nothing behind", () => {
+    const hops = routeThroughDebts(chain, A, D, rs("100"))!;
+    expect(hops).toEqual([
+      { fromMemberId: A, toMemberId: B, amount: rs("100") },
+      { fromMemberId: B, toMemberId: C, amount: rs("100") },
+      { fromMemberId: C, toMemberId: D, amount: rs("100") },
+    ]);
+    const after = computeBalances(
+      [bill(B, rs("200"), [A, B]), bill(C, rs("200"), [B, C]), bill(D, rs("200"), [C, D])],
+      hops.map((h) => settle(h.fromMemberId, h.toMemberId, h.amount)),
+    );
+    expect(listDirectDebts(after)).toEqual([]); // the Direct view is clean too
+  });
+  it("a partial payment pays every hop down by the same amount", () => {
+    const hops = routeThroughDebts(chain, A, D, rs("40"))!;
+    expect(hops.map((h) => h.amount)).toEqual([rs("40"), rs("40"), rs("40")]);
+  });
+  it("uses a direct debt as a one-hop route", () => {
+    expect(routeThroughDebts(chain, A, B, rs("100"))).toEqual([{ fromMemberId: A, toMemberId: B, amount: rs("100") }]);
+  });
+  it("returns null when the debts can't carry that much that way", () => {
+    expect(routeThroughDebts(chain, A, D, rs("100") + 1)).toBeNull();
+    expect(routeThroughDebts(chain, D, A, rs("1"))).toBeNull();
+    expect(routeThroughDebts(chain, A, A, 1)).toBeNull();
+    expect(routeThroughDebts(chain, A, D, 0)).toBeNull();
+  });
+  it("splits across two routes when one isn't enough", () => {
+    // Ann owes Bob 100 and Cat 100; Bob and Cat each owe Dan 100: Ann→Dan 200 needs both routes.
+    const pw = computeBalances([bill(B, rs("200"), [A, B]), bill(C, rs("200"), [A, C]), bill(D, rs("200"), [B, D]), bill(D, rs("200"), [C, D])], []);
+    const hops = routeThroughDebts(pw, A, D, rs("200"))!;
+    expect(hops.reduce((s, h) => s + h.amount, 0)).toBe(rs("400")); // 2 hops x 2 routes
+    expect(hops.every((h) => h.amount === rs("100"))).toBe(true);
   });
 });
 

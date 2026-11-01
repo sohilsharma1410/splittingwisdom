@@ -79,16 +79,60 @@ test("simplified view cuts 2 debts to 1; paying it settles everyone overall", as
   await dialog.getByRole("button", { name: "Confirm" }).click();
   await expect(dialog).toBeHidden({ timeout: 5000 });
 
-  // Nothing left to pay overall, and the page says so without a reload.
-  await expect(section).toContainText("Everyone is settled overall");
+  // Paying "Ann pays Cat" is recorded as the chain it stands for (Ann→Bob and Bob→Cat), so the
+  // Direct view is clean too: no leftover "Cat pays Ann"-style offsetting entries.
+  await expect(section).toHaveCount(0);
+  const direct = await call(bob, "get", `/api/groups/${groupId}`);
+  expect(direct.body.data.group.debts).toEqual([]);
 
   // Everyone's overall position is now exactly zero.
   for (const ctx of [page.request, bob, cat]) {
     const r = await call(ctx, "get", "/api/balances");
     expect(r.body.data.netBalance).toBe(0);
+    expect(r.body.data.unsettledCount).toBe(0);
   }
-  // The bills and ledger were never rewritten — only a payment was added.
+  // Two real settlements, each explaining itself; the bills were never rewritten.
   const hist = await call(bob, "get", `/api/settlements?groupId=${groupId}`);
-  expect(hist.body.data.settlements).toHaveLength(1);
-  expect(hist.body.data.settlements[0]).toMatchObject({ payerName: "Ann Person", recipientName: "Cat Person", amount: 10000 });
+  const rows = hist.body.data.settlements as { payerName: string; recipientName: string; amount: number; note: string }[];
+  expect(rows.map((r) => `${r.payerName}>${r.recipientName}:${r.amount}`).sort()).toEqual(["Ann Person>Bob Person:10000", "Bob Person>Cat Person:10000"]);
+  expect(rows.every((r) => r.note.includes("Simplified payment: Ann Person paid Cat Person"))).toBe(true);
+  const bills = await call(bob, "get", "/api/bills");
+  expect(bills.body.data.bills.every((b: { status: string }) => b.status === "settled")).toBe(true);
+});
+
+test("a long chain (Ann→Bob→Cat→Dan) paid in one simplified payment leaves the Direct tab empty", async ({ page, playwright }) => {
+  const id = uid();
+  const ctxs = { bob: await playwright.request.newContext(), cat: await playwright.request.newContext(), dan: await playwright.request.newContext() };
+  const reg = (ctx: APIRequestContext, who: string) =>
+    call(ctx, "post", "/api/auth/register", { email: `e2e-${who}-${id}@example.com`, displayName: `${who[0].toUpperCase()}${who.slice(1)} Person`, password: "e2e-password-1" });
+  const ann = await reg(page.request, "ann");
+  const u = { bob: await reg(ctxs.bob, "bob"), cat: await reg(ctxs.cat, "cat"), dan: await reg(ctxs.dan, "dan") };
+  const groupId = (await call(ctxs.bob, "post", "/api/groups", { name: `Long ${id}` })).body.data.group.id;
+  for (const w of [ann, u.cat, u.dan]) await call(ctxs.bob, "post", `/api/groups/${groupId}/members`, { userId: w.body.data.user.id });
+  const members = (await call(ctxs.bob, "get", `/api/groups/${groupId}`)).body.data.group.members as { id: number; userId: number }[];
+  const m = (x: { body: { data: { user: { id: number } } } }) => members.find((y) => y.userId === x.body.data.user.id)!.id;
+  const bill = (ctx: APIRequestContext, payer: number, who: number[]) =>
+    call(ctx, "post", "/api/bills", {
+      groupId, description: "chain", billDate: new Date().toISOString().slice(0, 10),
+      subtotalAmount: 20000, taxAmount: 0, tipAmount: 0, serviceFeeAmount: 0, discountAmount: 0, paidByMemberId: payer,
+      items: [{ name: "Shared", price: 20000, quantity: 1, assignments: who.map((memberId) => ({ memberId, splitType: "equal" })) }],
+    });
+  await bill(ctxs.bob, m(u.bob), [m(ann), m(u.bob)]); // Ann owes Bob 100
+  await bill(ctxs.cat, m(u.cat), [m(u.bob), m(u.cat)]); // Bob owes Cat 100
+  await bill(ctxs.dan, m(u.dan), [m(u.cat), m(u.dan)]); // Cat owes Dan 100
+
+  await page.goto(`${BASE}/group/${groupId}`);
+  const section = page.locator("#settle-up");
+  await section.getByRole("button", { name: "Simplified" }).click();
+  await expect(section).toContainText("3 debts simplified to 1 payment");
+  await section.getByRole("button", { name: /Settle .* with Dan Person/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Confirm" }).click();
+  await expect(page.getByRole("dialog")).toBeHidden({ timeout: 5000 });
+
+  // The reported bug: the Direct tab used to still show "You pay Bob ₹100" and "Dan pays you ₹100".
+  await expect(section).toHaveCount(0);
+  const g = await call(page.request, "get", `/api/groups/${groupId}`);
+  expect(g.body.data.group.debts).toEqual([]);
+  expect((await call(page.request, "get", "/api/balances")).body.data.netBalance).toBe(0);
+  for (const ctx of Object.values(ctxs)) expect((await call(ctx, "get", "/api/balances")).body.data.netBalance).toBe(0);
 });
