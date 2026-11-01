@@ -15,6 +15,11 @@ nothing saves without Confirm. Unknowns: Chrome sends speech to Google by defaul
 support is unconfirmed, and no model has been measured on this task. The rule-based matcher and test sentences
 exist, unconnected to the app, and results are in `docs/PI-STATUS.md`. Next: collect real speech, then try a model.
 
+Owner direction since then: **English only**, and consider running speech recognition on the Pi too, so nothing depends on
+Google or Apple. That would mean recording on the phone, sending the audio to an isolated container on the Pi, deleting it
+straight after, and testing `tiny.en` and `base.en` Whisper models on real recordings before building anything. The Hindi and
+Hinglish rules and test sentences in `speech-split` are no longer needed, and should go when this is picked up.
+
 ## Undo / delete a settlement
 
 Phase 6 records payments but has no way to reverse a mistaken one (wrong amount, wrong person, recorded twice before idempotency existed). Needs a design before building: who may undo (either party? only the recorder?), whether it's a hard delete or a visible reversal entry (the latter keeps the ledger auditable and fits "traceable balances"), and how it interacts with derived bill status. Until then a wrong payment can only be offset by recording a payment the other way.

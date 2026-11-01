@@ -351,7 +351,7 @@ Source: `PHASE-5-ocr.md` §3 and `PLAN` notes in repo history (Checkpoint C).
 - [ ] Acceptance: `PHASE-5-ocr.md` "Definition of done" list.
 
 ### D4 — Voice commands (new)
-*Under discussion, not approved: speaking the split while a receipt is read, with a small model on the Pi. See `BACKLOG.md`. It would change D8.*
+*Under discussion, not approved: speaking the split while a receipt is read, with speech recognition and a small model on the Pi. See `BACKLOG.md`. It would change D8. **English only, by owner decision (2026-11-01), which replaces the Hindi and Hinglish parts of this section.***
 
 **Goal:** speak naturally to add/assign items; always **confirm before saving**.
 
