@@ -326,7 +326,31 @@ ends up blank, which is the case for adding a small model. No model has been tri
 | The app during the test | No failed health checks, and the slowest under 1s |
 | Silence | Comes back empty |
 
-**Results on x86, not the Pi yet.** 281 clips, using faster-whisper 1.2.1 with int8 and 3 threads, beam 1 unless noted.
+**Results on the Pi: all four bars passed.** Awaiting the owner's approval before D4.10. Each run used the prompt and beam 1, in a container with no network, 3 cores and a 1500 MB limit.
+
+| Run | Clips | Typical | Slowest | Clips of 15s or more, slowest | Time per second of speech | Peak memory | Slowest app check |
+|---|---|---|---|---|---|---|---|
+| `tiny.en` alone | 281 | 0.9s | 11.2s | 2.7s | 0.27s | 429 MB | 0.02s |
+| `base.en` alone | 281 | 1.8s | **43.5s** | 3.6s | 0.50s | 658 MB | 0.02s |
+| `base.en` alone, no retries | 107 | 1.9s | 4.9s | none in this set | 0.33s | 365 MB | 0.02s |
+| `tiny.en` during scans | 18 | 4.9s | 10.7s | 10.7s | 0.38s | 315 MB | 0.01s |
+| `base.en` during scans | 18 | 8.3s | 16.2s | 16.2s | 0.62s | 384 MB | 0.03s |
+
+No app health check failed and no clip failed. Silence came back empty. Accuracy on the Pi matches x86 within a few points:
+
+| Run | Real voices: word errors | Real voices with background speech: word errors | Generated voices: names and dishes kept | Same, with background speech |
+|---|---|---|---|---|
+| `tiny.en` | 19.1% | 55.3% | 359/420 | 68/93 |
+| `base.en` | 13.6% | 40.3% | 358/420 | 73/93 |
+| `base.en`, no retries | 13.5% | 37.4% | not run | 73/93 |
+
+**Settings for D4.10: `base.en`, prompt, beam 1, no retries.** Retries caused the 43.5s worst case and didn't improve accuracy. The set with no retries was smaller and left out the clips of 15s or more, so the service must be timed again with these settings.
+
+**During scans:** a receipt scan rose from about 2.2s to 4.7-4.8s, and its slowest was 17.5s. That was with scans running back to back, which is worse than real use, and with retries on. It's inside the 20-second target but not by much.
+
+**Not measured:** upload and decoding time, and recordings from a real browser. The clips were encoded to match phone formats, not recorded on phones. Background speech alone still produces invented text, with or without retries, such as "He was a male...". The onnxruntime telemetry warning in the output is harmless: the container has no network.
+
+**Results on x86, for comparing settings.** 281 clips, using faster-whisper 1.2.1 with int8 and 3 threads, beam 1 unless noted.
 
 | Setting | Real voices: word errors | Real voices with background speech: word errors | Generated voices: names and dishes kept | Same, with background speech |
 |---|---|---|---|---|
