@@ -124,3 +124,31 @@ describe("buildCreateBill", () => {
     expect(r.ok && "receiptImageUrl" in r.input).toBe(false);
   });
 });
+
+describe("tax already included in the prices (AIRR TOAST receipt)", () => {
+  const AIRR: ReceiptExtraction = {
+    merchant: "AIRR TOAST", billDate: "2026-10-11",
+    items: [
+      { name: "Affogato", price: 45000, quantity: 1, confidence: "low" },
+      { name: "Mochaccino", price: 37000, quantity: 1, confidence: "high" },
+      { name: "Iced Latte", price: 34000, quantity: 1, confidence: "high" },
+    ],
+    subtotalAmount: null, taxAmount: null, taxIncludedAmount: 5524, tipAmount: null, serviceFeeAmount: null, discountAmount: null,
+    roundOffAmount: null, totalAmount: 116000, overallConfidence: "high", totalsMismatch: null,
+  };
+  const draft = draftFromExtraction(AIRR, "2026-11-01");
+
+  it("is shown for information but never added: the bill is ₹1,160.00, not ₹1,215.24", () => {
+    expect(draft.tax).toBe("");
+    expect(draft.taxIncluded).toBe(5524);
+    expect(computeTotals(draft).grandTotal).toBe(116000);
+    expect(mismatchOf(draft)).toBeNull();
+    const r = buildCreateBill(draft, target);
+    if (!r.ok) throw new Error(r.message);
+    expect(r.input.taxAmount).toBe(0);
+    expect(r.input.subtotalAmount).toBe(116000);
+  });
+  it("flags only the genuinely uncertain line", () => {
+    expect(itemsNeedingReview(draft).map((i) => i.name)).toEqual(["Affogato"]);
+  });
+});

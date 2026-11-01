@@ -22,6 +22,7 @@ const rawExtractionSchema = z.object({
   items: z.array(z.unknown()).catch([]),
   subtotal: optionalPaise(),
   tax: optionalPaise(),
+  tax_included: optionalPaise(),
   tip: optionalPaise(),
   service_fee: optionalPaise(),
   discount: optionalPaise(),
@@ -48,7 +49,10 @@ export interface ExtractionResult {
   billDate: string | null;
   items: ExtractedItem[];
   subtotalAmount: number | null;
+  /** Tax added on top of the item prices. */
   taxAmount: number | null;
+  /** Tax already inside the item prices (informational — never added again). */
+  taxIncludedAmount: number | null;
   tipAmount: number | null;
   serviceFeeAmount: number | null;
   discountAmount: number | null;
@@ -111,12 +115,26 @@ export function parseExtraction(text: string): ExtractionResult | null {
     if (item.success) items.push(item.data);
   }
 
+  // Safety net for a model that mislabels tax: if the items and the other charges ALREADY add up to the
+  // printed total, a "tax" on top can't be right — it's the tax inside the prices. Adding it again would
+  // charge everyone the tax twice.
+  let tax = raw.tax;
+  let taxIncluded = raw.tax_included;
+  if (tax && tax > 0 && raw.total !== null) {
+    const withoutTax = items.reduce((sum, i) => sum + i.price, 0) + (raw.tip ?? 0) + (raw.service_fee ?? 0) + (raw.round_off ?? 0) - (raw.discount ?? 0);
+    if (Math.abs(withoutTax - raw.total) < 50) {
+      taxIncluded = taxIncluded ?? tax;
+      tax = null;
+    }
+  }
+
   return {
     merchant: raw.merchant,
     billDate: raw.date,
     items,
     subtotalAmount: raw.subtotal,
-    taxAmount: raw.tax,
+    taxAmount: tax,
+    taxIncludedAmount: taxIncluded,
     tipAmount: raw.tip,
     serviceFeeAmount: raw.service_fee,
     discountAmount: raw.discount,
@@ -125,7 +143,7 @@ export function parseExtraction(text: string): ExtractionResult | null {
     overallConfidence: raw.overall_confidence,
     totalsMismatch: computeTotalsMismatch(
       items,
-      { tax: raw.tax, tip: raw.tip, serviceFee: raw.service_fee, discount: raw.discount, roundOff: raw.round_off },
+      { tax, tip: raw.tip, serviceFee: raw.service_fee, discount: raw.discount, roundOff: raw.round_off },
       raw.total,
     ),
   };
@@ -135,6 +153,18 @@ export function parseExtraction(text: string): ExtractionResult | null {
 export function ocrInfo(env: NodeJS.ProcessEnv = process.env): { provider: string; model: string } {
   const c = readOcrConfig(env);
   return { provider: c.provider, model: c.model || "(not set)" };
+}
+
+/** Runs `call`, retrying only transient failures, waiting the given milliseconds before each retry. */
+export async function withRetries(call: () => Promise<string>, waits: number[]): Promise<string> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await call();
+    } catch (err) {
+      if (attempt >= waits.length || !isTransient(err instanceof Error ? err.message : "")) throw err;
+      await new Promise((resolve) => setTimeout(resolve, waits[attempt]));
+    }
+  }
 }
 
 const isTransient = (message: string) => /\b(503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED/.test(message);
@@ -158,16 +188,19 @@ export async function extractReceipt(
     label = `${config.provider}:${config.model}`;
     timer = setTimeout(() => controller.abort(), config.timeoutMs);
     const provider = providerOverride ?? buildProvider(config);
-    const request = () => provider({ buffer, mimeType, prompt: RECEIPT_PROMPT, signal: controller.signal });
+    const ask = (p: VisionProvider) => () => p({ buffer, mimeType, prompt: RECEIPT_PROMPT, signal: controller.signal });
 
     let text: string;
     try {
-      text = await request();
+      // "High demand" (503) and rate limits (429) are usually over in seconds: wait a little and try again.
+      text = await withRetries(ask(provider), [2000, 4000]);
     } catch (err) {
-      // One quick retry for "high demand" / rate-limit blips; anything else is a real failure.
-      if (!isTransient(err instanceof Error ? err.message : "")) throw err;
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      text = await request();
+      // Still overloaded after that: one try on the fallback model rather than failing the scan.
+      const message = err instanceof Error ? err.message : "";
+      if (!isTransient(message) || !config.fallbackModel || providerOverride) throw err;
+      console.error(`OCR (${label}) is overloaded; trying ${config.fallbackModel} instead.`);
+      label = `${config.provider}:${config.fallbackModel}`;
+      text = await withRetries(ask(buildProvider({ ...config, model: config.fallbackModel })), [2000]);
     }
     if (!text) return null;
     const result = parseExtraction(text);
