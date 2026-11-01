@@ -12,8 +12,8 @@ the review screen, using a small language model on the Pi. It extends D4 (voice)
 which uses Gemini for parsing. Ground rules if it goes ahead: the model only links item numbers to member
 IDs and shares, never amounts; `shared/lib` computes all the money; anything unclear stays unassigned;
 nothing saves without Confirm. Unknowns: Chrome sends speech to Google by default, iPhone installed-app
-support is unconfirmed, and no model has been measured on this task. Start with the D4.7 eval set and a
-rule-based matcher, and add a model only if the rules fall short.
+support is unconfirmed, and no model has been measured on this task. The rule-based matcher and test sentences
+exist, unconnected to the app, and results are in `docs/PI-STATUS.md`. Next: collect real speech, then try a model.
 
 ## Undo / delete a settlement
 

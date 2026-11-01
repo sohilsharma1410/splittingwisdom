@@ -88,42 +88,64 @@ reach this from the app. Its network has no internet and holds only it and the A
 limited to 1500 MB and 3 cores. On x86 without Docker, the real flow passed `qa-smoke` 70/70. On the
 Pi, `deploy/pi/smoke.sh` also passed 70/70, with a scan taking 2.2s and the slowest database request
 during it 49 ms. It confirmed no internet from the container, no route to Postgres, no host port, an
-enforced memory limit, and the app working with OCR stopped. An unknown `OCR_DRIVER` skips the scan, so a typo can't send photos to Google. Render
+enforced memory limit, and the app working with OCR stopped. An unknown `OCR_PROVIDER` fails the scan, so a typo can't send photos to Google. Render
 will use Gemini by default when it gets this code, or manual entry if it has no key, so M4 needs a
 decision on that.
 
-**Step 4, the accuracy test, needs real Indian bills.** `deploy/pi/try-receipts.sh` runs the photos
-in `~/ocr-test` through the real flow.
+**Step 4, real bills, will be tested directly in the app** once the merged scan screen is running.
+Until then, nothing has been tested on a real Indian bill.
+
+**Abandoned scan photos:** `server/src/tools/cleanup-receipts.ts` deletes photos that no bill uses, weekly
+once `deploy/pi/splittingwisdom-cleanup.timer` is installed. It refuses if the database has no bills or if it
+would delete most photos, so restore the database before copying receipts at cutover.
+
 
 ## Merge plan
 
 Agreed by both collaborators (D18, D19). Local OCR is the primary and Gemini is the secondary.
 
 1. The collaborator finishes the UI screens and merges to `main`.
-2. `main` merges into `dev-ocr`, and local OCR gets connected to the review screen.
+2. `main` merges into `dev-ocr`.
 3. Gates and `deploy/pi/smoke.sh` pass, then `dev-ocr` merges to `main`. Render and Vercel deploy on every push to `main`.
 4. Both collaborators update, check they're on the same page, and decide what's next.
 
-**What the merge has to resolve,** from a trial merge of `dev-ocr` (`0a6d69c`) into `dev-pi` (`3213a6f`):
+**Prepared so far:** `dev-ocr` has `dev-pi` merged in, up to `3213a6f`, and local OCR fills the review screen's format.
+To stay in step, run `git merge origin/dev-pi` on `dev-ocr` as more arrives. Build, type check and unit tests pass. Integration tests pass apart from the two intermittent failures below. `qa-smoke` passes 73/73
+through the real OCR service on x86. Not yet checked: the merged code on the Pi, and the scan screen in a browser with local OCR.
 
-- **Git conflicts:** `scripts/ocr-test.mjs`, `scripts/qa-smoke.mjs`, `server/src/routes/bills.ts`.
-- **Moved code:** `dev-pi` replaced `server/src/lib/gemini.ts` with `receipt-ocr.ts` and `ocr/providers.ts`.
-  `receipt-parser.ts` and `receipt-extract.ts` import from the old file.
-- **Two settings:** `dev-pi` has `OCR_PROVIDER` (`gemini` or `openai`) and `dev-ocr` has `OCR_DRIVER`. Local
-  should become one more provider. The parser returns finished data rather than model text, so it plugs in
-  at `extractReceipt`, not as a `VisionProvider`. `ocrInfo()` needs a local entry for the review screen.
-- **Round-off:** `dev-pi` has a signed `roundOffAmount`, shown on the review screen. The parser folds round-off
-  into tax or discount, and should fill the new field instead.
-- **Small mismatches:** `dev-pi` ignores differences under 50 paise, while the parser reports any difference.
-- **Keep:** an unknown OCR setting must never send photos to Google. Local OCR stays on its isolated network.
+**How they fit together:**
 
-**Decisions for after the merge:**
+- `OCR_PROVIDER=rapidocr` selects local OCR, and `deploy/pi/docker-compose.yml` sets it. `OCR_PROVIDER=local` is not this: on
+  `dev-pi` it means a local model server such as Ollama.
+- `server/src/lib/receipt-extract.ts` is a thin wrapper. It sends `rapidocr` to the `ocr` container and everything else to
+  `receipt-ocr.ts` unchanged. `routes/bills.ts` imports from the wrapper. Keep that import when merging.
+- The parser fills `roundOffAmount` and uses the shared `computeTotalsMismatch`, including its 50-paise tolerance.
+- `ocrInfo()` in the wrapper doesn't throw on a bad setting. The one in `receipt-ocr.ts` does, which would fail the request
+  after the photo is saved.
+- `scripts/ocr-test.mjs` keeps `X-Forwarded-Proto`, so it can log in from the Pi itself.
 
-- **When is Gemini used?** Suggested default: the Pi uses local only, and failed scans go to manual entry. Render
-  uses Gemini during an outage, because it can't run local OCR. A Pi that falls back to Gemini would send photos
-  to Google, so that should be a deliberate choice.
-- **`dev-pi` tests use a real receipt's values** (`client/src/lib/receipt-draft.test.ts`), including a real merchant
-  name. No photo or personal details were found, but the repo is public, so confirm that's fine.
+**Decisions:**
+
+- **When Gemini is used:** the Pi reads with local OCR only, and failed scans go to manual entry. Render uses Gemini during an
+  outage, because it can't run local OCR. A Pi that falls back to Gemini would send photos to Google. The owner agreed; the
+  collaborator should confirm.
+- **`dev-pi` tests use a real receipt's values** (`client/src/lib/receipt-draft.test.ts`), including a real merchant name. No
+  photo or personal details were found, but the repo is public, so confirm that's fine.
+
+## Speaking the split (idea, not connected to the app)
+
+See `BACKLOG.md`. The owner agreed the direction: test plain matching first, and speech may go to Google or Apple if the app
+says so. `server/src/lib/speech-split.ts` only links item numbers to member ids and share counts, and never sees an amount.
+
+| Plain rules, no model | Exact | Left blank | Wrong guess |
+|---|---|---|---|
+| 30 casual sentences, first run | 16 | 5 | 9 |
+| The same 30, after adding rules that hold back | 19 | 11 | 0 |
+| 40 simpler sentences (`DEV_CASES`, `HELD_OUT_CASES`) | 40 | 0 | 0 |
+
+The same person wrote the rules and all the sentences, so the first row is the most honest number, and the zeros aren't proven.
+The test that counts is real people's real speech, run through real speech recognition. Casual phrasing like "so did Ravi" still
+ends up blank, which is the case for adding a small model. No model has been tried.
 
 ## What runs where
 
@@ -192,15 +214,12 @@ failover bug. It hasn't been reproduced on demand.
 **Suggested fix, not applied:** let `onResult` return a promise, `await` it in the
 worker, and have the test return its update. That forces the order the test intends.
 
-**Record so far:**
+**It isn't caused by the Pi or OCR work.** On untouched `dev-pi` (`3213a6f`), the full integration suite failed this test in
+2 of 6 runs. An earlier baseline of 0 in 5 was luck.
 
-| Run | Failed |
-|---|---|
-| Full gates on Pi branches | 3 of 7 |
-| Integration suite alone on Pi branches | 0 of 7 |
-| That test file alone on Pi branches | 0 of 4 |
-| Untouched `dev-pi`, before the Pi work (only 1 of these was a full gate run) | 0 of 5 |
+## Another intermittent test failure
 
-Failures only appeared in full gate runs, which fits a timing race but doesn't prove it.
-The Pi work doesn't touch this code. The last 3 full gate runs before merging M2 all
-passed, so the race is probably still there rather than fixed.
+`server/test/roles.int.test.ts`, "after a failover the roles swap…", failed once with Postgres `deadlock detected`, in 1 of
+4 full runs on `dev-ocr` after merging `dev-pi`. It passed 4 of 4 alone, and didn't appear in 6 runs on untouched `dev-pi`.
+Test files run one at a time, so the likely cause is a background timer from an earlier test colliding with `truncateAll`.
+That's unproven, and the test doesn't touch OCR code.
