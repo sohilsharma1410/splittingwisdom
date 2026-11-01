@@ -39,7 +39,7 @@ for (const file of files) {
   if (extractionFailed) continue;
   console.log(`  merchant: ${x.merchant ?? "—"}   date: ${x.billDate ?? "—"}`);
   for (const i of x.items) console.log(`    ${i.confidence === "low" ? "?" : " "} ${String(i.quantity).padStart(2)} × ${i.name.slice(0, 34).padEnd(34)} ${rupees(i.price).padStart(11)}`);
-  console.log(`  tax ${rupees(x.taxAmount)} · tip ${rupees(x.tipAmount)} · service ${rupees(x.serviceFeeAmount)} · discount ${rupees(x.discountAmount)} · TOTAL ${rupees(x.totalAmount)}`);
+  console.log(`  tax added ${rupees(x.taxAmount)}${x.taxIncludedAmount ? ` (+ ${rupees(x.taxIncludedAmount)} already included in prices)` : ""} · tip ${rupees(x.tipAmount)} · service ${rupees(x.serviceFeeAmount)} · discount ${rupees(x.discountAmount)} · round-off ${rupees(x.roundOffAmount)} · TOTAL ${rupees(x.totalAmount)}`);
   console.log(x.totalsMismatch ? `  ⚠ totals mismatch: items+charges = ${rupees(x.totalsMismatch.itemsSum)} but receipt total reads ${rupees(x.totalsMismatch.extractedTotal)} (off by ${rupees(Math.abs(x.totalsMismatch.delta))})` : "  ✓ items + charges add up to the receipt total");
 }
 console.log("\nCompare each block to the paper receipt: wrong/missing items, wrong prices, and any '?' (low confidence) lines are what we need to hear about.");

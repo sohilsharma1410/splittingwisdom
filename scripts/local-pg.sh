@@ -35,6 +35,8 @@ ssl = on
 ssl_cert_file = 'server.crt'
 ssl_key_file = 'server.key'
 wal_level = logical
+timezone = 'UTC'
+log_timezone = 'UTC'
 EOF
 }
 
@@ -43,6 +45,7 @@ running() { "$PG_BIN/pg_ctl" -D "$DATA" status >/dev/null 2>&1; }
 case "$CMD" in
   start)
     init
+    grep -q "^timezone = 'UTC'" "$DATA/postgresql.conf" || printf "timezone = 'UTC'\nlog_timezone = 'UTC'\n" >> "$DATA/postgresql.conf"
     running || "$PG_BIN/pg_ctl" -D "$DATA" -l "$DATA/server.log" -w start >/dev/null
     "$PG_BIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -tAc \
       "SELECT 1 FROM pg_database WHERE datname='$DB'" postgres | grep -q 1 \
