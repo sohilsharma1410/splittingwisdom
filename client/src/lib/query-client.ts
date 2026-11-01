@@ -26,12 +26,16 @@ export async function apiFetch<T>(
   // FormData bodies (receipt image uploads) must NOT get a manual
   // Content-Type — the browser sets its own with the multipart boundary.
   const isFormData = init?.body instanceof FormData;
+  // Merge rather than let `init.headers` replace ours — a caller adding an
+  // Idempotency-Key must not silently drop the JSON Content-Type.
+  const headers = new Headers(init?.headers);
+  if (init?.body && !isFormData && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   let res: Response;
   try {
     res = await fetch(`${API_BASE_URL}${path}`, {
       credentials: "include",
-      headers: init?.body && !isFormData ? { "Content-Type": "application/json" } : undefined,
       ...init,
+      headers,
     });
   } catch {
     // fetch() throws for network-level failures (offline, DNS, CORS) rather

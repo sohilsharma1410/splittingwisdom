@@ -14,6 +14,8 @@ export interface BalancesSummary {
   totalIOwe: number;
   unsettledCount: number;
   balances: BalanceSummaryItem[];
+  /** Groups where "simplify debts" would cut the number of payments. */
+  simplifiableGroups: { groupId: number; groupName: string; directCount: number; simplifiedCount: number }[];
 }
 
 export interface ContributingBillItem {
@@ -36,11 +38,29 @@ export interface ContributingBill {
   items: ContributingBillItem[];
 }
 
+export interface SettlementHistoryItem {
+  id: number;
+  groupId: number;
+  groupName: string;
+  amount: number;
+  /** "paid-by-me": I paid them. "paid-to-me": they paid me. */
+  direction: "paid-by-me" | "paid-to-me";
+  note: string | null;
+  settlementDate: string;
+  createdAt: string;
+}
+
 export interface BalanceDetail {
   personId: string;
   displayName: string;
+  /** Signed, positive = they owe me. Already net of settlements. */
   netAmount: number;
+  /** What the bills alone created (signed, positive = they owe me). */
+  billsNet: number;
+  /** What payments did to that (signed): billsNet + settlementsNet = netAmount. */
+  settlementsNet: number;
   contributingBills: ContributingBill[];
+  settlements: SettlementHistoryItem[];
 }
 
 export function useBalances() {

@@ -21,8 +21,10 @@ import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getMembership } from "../middleware/authorize.js";
 import { rateLimit } from "../middleware/rate-limit.js";
+import { idempotency } from "../middleware/idempotency.js";
 import { isSupportedReceiptMimeType, uploadReceiptImage, getReceiptSignedUrl } from "../lib/storage.js";
 import { extractReceipt } from "../lib/gemini.js";
+import { loadBillStatuses } from "../lib/bill-status.js";
 
 const MAX_RECEIPT_IMAGE_BYTES = 10 * 1024 * 1024;
 const receiptUpload = multer({
@@ -218,6 +220,8 @@ router.get("/", async (req, res) => {
     orderBy: (b, { desc }) => [desc(b.createdAt)],
   });
 
+  const statuses = await loadBillStatuses([...new Set(allBills.map((b) => b.groupId))]);
+
   const result = allBills.map((bill) => {
     const breakdown = buildBreakdownResponse(bill.items, bill);
     const myMemberId = myMemberIdByGroup.get(bill.groupId);
@@ -235,7 +239,7 @@ router.get("/", async (req, res) => {
       itemCount: bill.items.length,
       unassignedItemCount: bill.items.length - assignedItemCount,
       paidByName: bill.paidBy.displayName,
-      status: bill.status,
+      status: statuses.get(bill.id) ?? "pending",
       hasReceipt: bill.receiptImageUrl !== null,
       myShare,
       createdAt: bill.createdAt,
@@ -257,7 +261,7 @@ router.get("/", async (req, res) => {
   res.json({ data: { bills: result } });
 });
 
-router.post("/", async (req, res) => {
+router.post("/", idempotency(), async (req, res) => {
   const parsed = createBillSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: { message: parsed.error.issues[0].message } });
@@ -445,6 +449,7 @@ router.get("/:id", async (req, res) => {
       : Promise.resolve(null),
   ]);
 
+  const statuses = await loadBillStatuses([bill.groupId]);
   const items = buildItemsResponse(bill.items);
   const breakdown = buildBreakdownResponse(bill.items, bill);
   const itemsSubtotal = bill.items.reduce((sum, item) => sum + item.price, 0);
@@ -470,7 +475,7 @@ router.get("/:id", async (req, res) => {
         grandTotal: billGrandTotal(bill),
         paidByMemberId: bill.paidByMemberId,
         paidByName: bill.paidBy.displayName,
-        status: bill.status,
+        status: statuses.get(bill.id) ?? "pending",
         createdByName: createdBy?.displayName ?? "Someone",
         lastEditedByName: lastEditedBy?.displayName ?? null,
         lastEditedAt: bill.lastEditedAt,

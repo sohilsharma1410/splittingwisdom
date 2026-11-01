@@ -4,6 +4,9 @@ import {
   groupMembers,
   bills,
   groups,
+  settlements,
+  countDirectDebts,
+  simplifyDebts,
   billGrandTotal,
   computeBillBreakdown,
   computeItemShares,
@@ -12,12 +15,36 @@ import {
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { computeUserCounterpartyBalances } from "../lib/counterparty-balances.js";
+import { computeGroupBalances } from "../lib/group-balance.js";
+import { parsePersonId, resolvePersonTargets } from "../lib/person.js";
 
 const router = Router();
 router.use(requireAuth);
 
+/** Groups where "simplify debts" would genuinely cut the number of payments. */
+async function findSimplifiableGroups(userId: number) {
+  const mine = await db.query.groupMembers.findMany({ where: eq(groupMembers.userId, userId) });
+  if (mine.length === 0) return [];
+  const myGroups = await db.query.groups.findMany({
+    where: (g, { inArray }) => inArray(g.id, mine.map((m) => m.groupId)),
+    columns: { id: true, name: true, isPersonal: true },
+  });
+  const perGroup = await Promise.all(
+    myGroups
+      .filter((g) => !g.isPersonal)
+      .map(async (g) => {
+        const { pairwise } = await computeGroupBalances(g.id);
+        return { groupId: g.id, groupName: g.name, directCount: countDirectDebts(pairwise), simplifiedCount: simplifyDebts(pairwise).length };
+      }),
+  );
+  return perGroup.filter((g) => g.simplifiedCount < g.directCount).sort((a, b) => a.groupId - b.groupId);
+}
+
 router.get("/", async (req, res) => {
-  const balances = await computeUserCounterpartyBalances(req.session.userId!);
+  const [balances, simplifiableGroups] = await Promise.all([
+    computeUserCounterpartyBalances(req.session.userId!),
+    findSimplifiableGroups(req.session.userId!),
+  ]);
 
   const totalOwedToMe = balances.filter((b) => b.netAmount > 0).reduce((s, b) => s + b.netAmount, 0);
   const totalIOwe = balances.filter((b) => b.netAmount < 0).reduce((s, b) => s - b.netAmount, 0);
@@ -28,6 +55,7 @@ router.get("/", async (req, res) => {
       totalOwedToMe,
       totalIOwe,
       unsettledCount: balances.filter((b) => b.netAmount !== 0).length,
+      simplifiableGroups,
       balances: balances
         .map((b) => ({
           personId: b.key,
@@ -40,12 +68,6 @@ router.get("/", async (req, res) => {
   });
 });
 
-function parsePersonId(personId: string): { type: "user" | "member"; id: number } | null {
-  const match = /^([um])-(\d+)$/.exec(personId);
-  if (!match) return null;
-  return { type: match[1] === "u" ? "user" : "member", id: Number(match[2]) };
-}
-
 router.get("/:personId", async (req, res) => {
   const parsed = parsePersonId(req.params.personId);
   if (!parsed) {
@@ -53,27 +75,7 @@ router.get("/:personId", async (req, res) => {
     return;
   }
 
-  const myMemberships = await db.query.groupMembers.findMany({
-    where: eq(groupMembers.userId, req.session.userId!),
-  });
-  const myMembershipByGroup = new Map(myMemberships.map((m) => [m.groupId, m]));
-
-  // Find every (groupId, counterpartyMemberId) pair this personId resolves to,
-  // restricted to groups the current user is actually a member of.
-  const targets: { groupId: number; counterpartyMemberId: number }[] = [];
-  if (parsed.type === "user") {
-    const rows = await db.query.groupMembers.findMany({ where: eq(groupMembers.userId, parsed.id) });
-    for (const row of rows) {
-      if (myMembershipByGroup.has(row.groupId)) {
-        targets.push({ groupId: row.groupId, counterpartyMemberId: row.id });
-      }
-    }
-  } else {
-    const row = await db.query.groupMembers.findFirst({ where: eq(groupMembers.id, parsed.id) });
-    if (row && myMembershipByGroup.has(row.groupId)) {
-      targets.push({ groupId: row.groupId, counterpartyMemberId: row.id });
-    }
-  }
+  const targets = await resolvePersonTargets(req.session.userId!, req.params.personId);
 
   if (targets.length === 0) {
     res.status(404).json({ error: { message: "Person not found." } });
@@ -81,7 +83,21 @@ router.get("/:personId", async (req, res) => {
   }
 
   let displayName = "";
-  let netAmount = 0;
+  // Bills and payments are tracked apart so the page can show
+  // "bills ₹X − settled ₹Y → outstanding ₹Z"; both are signed, positive = they owe me.
+  let billsNet = 0;
+  let settlementsNet = 0;
+  const settlementHistory: {
+    id: number;
+    groupId: number;
+    groupName: string;
+    amount: number;
+    /** "paid-by-me": I paid them. "paid-to-me": they paid me. */
+    direction: "paid-by-me" | "paid-to-me";
+    note: string | null;
+    settlementDate: Date;
+    createdAt: Date;
+  }[] = [];
   const contributingBills: {
     billId: number;
     description: string;
@@ -95,7 +111,7 @@ router.get("/:personId", async (req, res) => {
   }[] = [];
 
   for (const target of targets) {
-    const myMemberId = myMembershipByGroup.get(target.groupId)!.id;
+    const myMemberId = target.myMemberId;
 
     const [group, groupBills, counterpartyMember, myMember] = await Promise.all([
       db.query.groups.findFirst({ where: eq(groups.id, target.groupId) }),
@@ -185,7 +201,7 @@ router.get("/:personId", async (req, res) => {
         ];
       });
 
-      netAmount += effect;
+      billsNet += effect;
       contributingBills.push({
         billId: bill.id,
         description: bill.description,
@@ -198,16 +214,38 @@ router.get("/:personId", async (req, res) => {
         items,
       });
     }
+
+    const groupSettlements = await db.query.settlements.findMany({ where: eq(settlements.groupId, target.groupId) });
+    for (const payment of groupSettlements) {
+      const iPaid = payment.payerMemberId === myMemberId && payment.recipientMemberId === target.counterpartyMemberId;
+      const theyPaid = payment.payerMemberId === target.counterpartyMemberId && payment.recipientMemberId === myMemberId;
+      if (!iPaid && !theyPaid) continue;
+      settlementsNet += iPaid ? payment.amount : -payment.amount;
+      settlementHistory.push({
+        id: payment.id,
+        groupId: target.groupId,
+        groupName: group.name,
+        amount: payment.amount,
+        direction: iPaid ? "paid-by-me" : "paid-to-me",
+        note: payment.note,
+        settlementDate: payment.settlementDate,
+        createdAt: payment.createdAt,
+      });
+    }
   }
 
   contributingBills.sort((a, b) => (a.billDate < b.billDate ? 1 : -1));
+  settlementHistory.sort((a, b) => b.settlementDate.getTime() - a.settlementDate.getTime() || b.id - a.id);
 
   res.json({
     data: {
       personId: req.params.personId,
       displayName,
-      netAmount,
+      netAmount: billsNet + settlementsNet,
+      billsNet,
+      settlementsNet,
       contributingBills,
+      settlements: settlementHistory,
     },
   });
 });

@@ -24,7 +24,7 @@ function ActivityCard({ bill }: { bill: ActivityBillItem }) {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
 
   return (
-    <div className="relative rounded-xl border border-border bg-surface p-4 transition-shadow hover:shadow-md">
+    <div className="relative rounded-xl border border-border bg-surface p-4 card-lift">
       <Link href={`/bill/${bill.id}`} className="absolute inset-0" aria-label={`Open ${bill.description}`} />
 
       <div className="flex items-start justify-between gap-3 pr-20 md:pr-0">
@@ -63,7 +63,7 @@ function ActivityCard({ bill }: { bill: ActivityBillItem }) {
             e.stopPropagation();
             setBreakdownOpen(true);
           }}
-          className="relative z-10 text-mint hover:underline"
+          className="relative z-10 text-mint-ink hover:underline"
         >
           {bill.itemCount} item{bill.itemCount === 1 ? "" : "s"} · See breakdown
         </button>
@@ -76,7 +76,7 @@ function ActivityCard({ bill }: { bill: ActivityBillItem }) {
         description={`${bill.groupName} · ${format(parseDateOnly(bill.billDate), "d MMM yyyy")} · Paid by ${bill.paidByName}`}
       >
         {bill.unassignedItemCount > 0 && (
-          <p className="flex items-center gap-1.5 text-xs text-coral">
+          <p className="flex items-center gap-1.5 text-xs text-coral-ink">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             {bill.unassignedItemCount} item{bill.unassignedItemCount === 1 ? "" : "s"} not assigned yet.
           </p>

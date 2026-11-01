@@ -35,7 +35,7 @@ export function ColdStartOverlay() {
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-3 bg-background/95 px-4 text-center backdrop-blur-sm">
-      <Loader2 className="h-8 w-8 animate-spin text-mint" aria-hidden="true" />
+      <Loader2 className="h-8 w-8 animate-spin text-mint-ink" aria-hidden="true" />
       <p className="text-sm font-medium">Waking the server…</p>
       <p className="max-w-xs text-xs text-muted-foreground">
         The free hosting tier sleeps after a while. This can take up to a minute — thanks for

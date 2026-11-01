@@ -1,0 +1,13 @@
+# Allow-list: anything not named here, including every .env file and the .git
+# folder, never reaches the image build.
+*
+!package.json
+!package-lock.json
+!scripts/link-drizzle-orm.mjs
+!shared
+!server
+!client
+**/node_modules
+**/dist
+**/.env
+**/.env.*

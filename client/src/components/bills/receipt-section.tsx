@@ -43,7 +43,7 @@ export function ReceiptSection({ billId, hasReceipt }: { billId: number; hasRece
         <button
           type="button"
           onClick={() => setViewerOpen(true)}
-          className="flex items-center gap-1.5 text-sm font-medium text-mint hover:underline"
+          className="flex items-center gap-1.5 text-sm font-medium text-mint-ink hover:underline"
         >
           <Camera className="h-4 w-4" aria-hidden="true" />
           View receipt
@@ -53,7 +53,7 @@ export function ReceiptSection({ billId, hasReceipt }: { billId: number; hasRece
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={upload.isPending}
-          className="flex items-center gap-1.5 text-sm font-medium text-mint hover:underline disabled:opacity-50"
+          className="flex items-center gap-1.5 text-sm font-medium text-mint-ink hover:underline disabled:opacity-50"
         >
           {upload.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -71,7 +71,7 @@ export function ReceiptSection({ billId, hasReceipt }: { billId: number; hasRece
           </DialogHeader>
           {urlLoading ? (
             <div className="flex h-64 items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-mint" aria-hidden="true" />
+              <Loader2 className="h-6 w-6 animate-spin text-mint-ink" aria-hidden="true" />
             </div>
           ) : receiptUrlData?.url ? (
             <img

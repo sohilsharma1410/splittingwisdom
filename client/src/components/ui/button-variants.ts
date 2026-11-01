@@ -7,9 +7,9 @@ export const buttonVariants = cva(
       variant: {
         default: "bg-mint text-mint-foreground hover:opacity-90",
         coral: "bg-coral text-coral-foreground hover:opacity-90",
-        outline: "border border-mint text-mint bg-transparent hover:bg-mint/10",
+        outline: "border border-mint text-mint-ink bg-transparent hover:bg-mint/10",
         ghost: "bg-transparent text-foreground hover:bg-foreground/5",
-        link: "bg-transparent text-mint underline-offset-4 hover:underline",
+        link: "bg-transparent text-mint-ink underline-offset-4 hover:underline",
       },
       size: {
         default: "h-10 px-4 py-2",

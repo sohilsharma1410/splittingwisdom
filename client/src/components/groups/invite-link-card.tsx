@@ -25,7 +25,7 @@ export function InviteLinkCard({ inviteToken, groupName }: { inviteToken: string
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
       <div className="flex items-center gap-2">
-        <Link2 className="h-4 w-4 text-mint" aria-hidden="true" />
+        <Link2 className="h-4 w-4 text-mint-ink" aria-hidden="true" />
         <h3 className="text-sm font-semibold">Invite link</h3>
       </div>
       <p className="mt-1 text-sm text-muted-foreground">

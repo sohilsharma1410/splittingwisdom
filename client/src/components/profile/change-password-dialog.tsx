@@ -93,7 +93,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; on
             />
           </div>
           {error && (
-            <p role="alert" className="flex items-start gap-1.5 text-sm text-coral">
+            <p role="alert" className="flex items-start gap-1.5 text-sm text-coral-ink">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               {error}
             </p>

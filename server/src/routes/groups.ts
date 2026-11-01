@@ -9,11 +9,15 @@ import {
   bills,
   settlements,
   billGrandTotal,
+  listDirectDebts,
+  simplifyDebts,
 } from "@splittingwisdom/shared";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireGroupMember } from "../middleware/authorize.js";
+import { idempotency } from "../middleware/idempotency.js";
 import { computeGroupBalances, memberNetBalance } from "../lib/group-balance.js";
+import { loadBillStatuses } from "../lib/bill-status.js";
 import { isForeignKeyViolation, isUniqueViolation } from "../lib/pg-errors.js";
 
 const router = Router();
@@ -73,7 +77,7 @@ router.get("/", async (req, res) => {
 // Everyone else is added by direct search (POST /:id/members) or joins via
 // the invite link — never a free-text member entry.
 // ---------------------------------------------------------------------------
-router.post("/", async (req, res) => {
+router.post("/", idempotency(), async (req, res) => {
   const parsed = insertGroupSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: { message: parsed.error.issues[0].message } });
@@ -140,6 +144,10 @@ router.get("/:id", requireGroupMember("id"), async (req, res) => {
           joinedAt: m.joinedAt,
           balance: memberNetBalance(pairwise, m.id, allMemberIds),
         })),
+        // Today's direct debts and the reduced set of payments that would
+        // settle everyone — a suggestion only; the ledger is untouched.
+        debts: listDirectDebts(pairwise),
+        simplifiedPayments: simplifyDebts(pairwise),
       },
     },
   });
@@ -155,6 +163,8 @@ router.get("/:id/bills", requireGroupMember("id"), async (req, res) => {
     orderBy: (b, { desc }) => [desc(b.createdAt)],
   });
 
+  const statuses = await loadBillStatuses([res.locals.groupId!]);
+
   res.json({
     data: {
       bills: groupBills.map((b) => ({
@@ -164,7 +174,7 @@ router.get("/:id/bills", requireGroupMember("id"), async (req, res) => {
         billDate: b.billDate,
         grandTotal: billGrandTotal(b),
         paidByName: b.paidBy.displayName,
-        status: b.status,
+        status: statuses.get(b.id) ?? "pending",
         createdAt: b.createdAt,
       })),
     },
@@ -222,7 +232,7 @@ router.delete("/:id", requireGroupMember("id"), async (req, res) => {
 // Phase 3 §1 stands; this is a second, equally strict path to a real
 // account, alongside the invite link, not a reopening of it.
 // ---------------------------------------------------------------------------
-router.post("/:id/members", requireGroupMember("id"), async (req, res) => {
+router.post("/:id/members", requireGroupMember("id"), idempotency(), async (req, res) => {
   const userId = Number(req.body?.userId);
   if (!Number.isInteger(userId) || userId <= 0) {
     res.status(400).json({ error: { message: "Choose someone to add." } });

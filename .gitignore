@@ -7,3 +7,10 @@ build/
 .DS_Store
 *.log
 .vercel
+
+# local throwaway Postgres clusters (scripts/local-pg.sh)
+.localdb/
+
+# playwright
+test-results/
+playwright-report/

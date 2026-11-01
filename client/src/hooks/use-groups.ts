@@ -31,6 +31,16 @@ export interface GroupDetail {
   createdAt: string;
   updatedAt: string;
   members: GroupMemberDetail[];
+  /** Today's direct debts: `fromMemberId` owes `toMemberId` `amount` paise. Largest first. */
+  debts: GroupPayment[];
+  /** The reduced set of payments that would settle everyone. A suggestion only. */
+  simplifiedPayments: GroupPayment[];
+}
+
+export interface GroupPayment {
+  fromMemberId: number;
+  toMemberId: number;
+  amount: number;
 }
 
 export interface InvitePreview {

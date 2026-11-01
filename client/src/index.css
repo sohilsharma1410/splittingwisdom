@@ -6,7 +6,7 @@
   --background: #f8f9fa;
   --surface: #ffffff;
   --foreground: #2c3e50;
-  --muted-foreground: #6b7785;
+  --muted-foreground: #5a6672;
   --border: #e5e8eb;
 
   --mint: #5bc5a7;
@@ -15,6 +15,14 @@
   --coral-foreground: #3a0d0d;
   --teal: #4ecdc4;
   --success: #27ae60;
+
+  /* Accents used as TEXT need darker shades on light backgrounds: the brand
+     tints above are 2-3:1 on white. These all clear 4.5:1 (WCAG AA), also on
+     the tinted chips. Backgrounds, borders and icons keep the brand colours. */
+  --mint-ink: #17705c;
+  --coral-ink: #b83333;
+  --success-ink: #18733f;
+  --teal-ink: #0f716b;
 }
 
 .dark {
@@ -30,6 +38,11 @@
   --coral-foreground: #3a0d0d;
   --teal: #6fe0d6;
   --success: #3fc97a;
+
+  --mint-ink: #7ed9c0;
+  --coral-ink: #ff8a8a;
+  --success-ink: #3fc97a;
+  --teal-ink: #6fe0d6;
 }
 
 @theme inline {
@@ -49,6 +62,10 @@
   --color-coral-foreground: var(--coral-foreground);
   --color-teal: var(--teal);
   --color-success: var(--success);
+  --color-mint-ink: var(--mint-ink);
+  --color-coral-ink: var(--coral-ink);
+  --color-success-ink: var(--success-ink);
+  --color-teal-ink: var(--teal-ink);
 
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
@@ -81,5 +98,57 @@
   .tabular-currency {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Settlement confirmation: one checkmark that pops in. Static under reduced motion. */
+@keyframes settle-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.settle-check {
+  animation: settle-pop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settle-check {
+    animation: none;
+  }
+}
+
+/* Motion (SPEC §19): restrained — page fade, dialog sheet/scale, card lift, FAB scale, skeleton shimmer. */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes overlay-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes sheet-down { from { transform: translateY(0); } to { transform: translateY(100%); } }
+@keyframes pop-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+@keyframes pop-out { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.96); } }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+@utility card-lift {
+  transition: transform 150ms ease, box-shadow 150ms ease;
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px -6px rgb(0 0 0 / 0.18);
+  }
+}
+
+@utility skeleton-shimmer {
+  background-image: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--foreground) 9%, transparent) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* People who ask their device for less motion get none. Durations stay
+   non-zero so animationend still fires and dialogs close cleanly. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

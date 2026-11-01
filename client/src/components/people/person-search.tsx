@@ -66,7 +66,7 @@ export function PersonSearch({ onAdd, excludeIds, knownPeople = [] }: PersonSear
               >
                 <InitialsAvatar name={p.displayName} className="h-6 w-6 text-[10px]" />
                 {p.displayName}
-                <Plus className="h-3.5 w-3.5 text-mint" aria-hidden="true" />
+                <Plus className="h-3.5 w-3.5 text-mint-ink" aria-hidden="true" />
               </button>
             ))}
           </div>
@@ -83,7 +83,7 @@ export function PersonSearch({ onAdd, excludeIds, knownPeople = [] }: PersonSear
           }}
           aria-label="Search for a person"
         />
-        <Button type="submit" variant="outline" disabled={search.isPending || !query.trim()}>
+        <Button type="submit" variant="outline" aria-label="Search" disabled={search.isPending || !query.trim()}>
           {search.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
           ) : (

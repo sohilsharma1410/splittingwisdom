@@ -112,7 +112,7 @@ export default function Register() {
           </div>
 
           {formError && (
-            <p role="alert" className="flex items-start gap-1.5 text-sm text-coral">
+            <p role="alert" className="flex items-start gap-1.5 text-sm text-coral-ink">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               {formError}
             </p>
@@ -128,7 +128,7 @@ export default function Register() {
           Already have an account?{" "}
           <Link
             href={nextPath ? `/login?next=${encodeURIComponent(nextPath)}` : "/login"}
-            className="text-mint hover:underline"
+            className="text-mint-ink underline underline-offset-2"
           >
             Log in
           </Link>

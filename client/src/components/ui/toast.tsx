@@ -41,10 +41,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             )}
           >
             {t.variant === "success" && (
-              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" aria-hidden="true" />
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success-ink" aria-hidden="true" />
             )}
             {t.variant === "error" && (
-              <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-coral" aria-hidden="true" />
+              <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-coral-ink" aria-hidden="true" />
             )}
             <div className="min-w-0 flex-1">
               <ToastPrimitive.Title className="text-sm font-semibold">

@@ -24,6 +24,7 @@ import { useGroup, useAddMemberByUser, type GroupMemberDetail } from "@/hooks/us
 import { useGroupBills } from "@/hooks/use-bills";
 import { useKnownPeople, type Person } from "@/hooks/use-people";
 import { useAuth } from "@/hooks/use-auth";
+import { SettleUpSection } from "@/components/settlements/settle-up-section";
 import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/query-client";
 import { formatPaise } from "@splittingwisdom/shared";
@@ -101,7 +102,7 @@ export default function GroupDetail() {
               Rename group
             </DropdownMenuItem>
             {isCreator && (
-              <DropdownMenuItem onSelect={() => setDeleteOpen(true)} className="text-coral">
+              <DropdownMenuItem onSelect={() => setDeleteOpen(true)} className="text-coral-ink">
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
                 Delete group
               </DropdownMenuItem>
@@ -144,6 +145,8 @@ export default function GroupDetail() {
         )}
       </section>
 
+      <SettleUpSection group={group} />
+
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Members</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -171,7 +174,7 @@ export default function GroupDetail() {
                 <button
                   onClick={() => setRemoveTarget(member)}
                   aria-label={`Remove ${member.displayName}`}
-                  className="text-muted-foreground hover:text-coral"
+                  className="text-muted-foreground hover:text-coral-ink"
                 >
                   <X className="h-4 w-4" aria-hidden="true" />
                 </button>

@@ -1,0 +1,19 @@
+# Starts the stack at boot (plan P2.4). Install steps are in README.md, which
+# fills in @DEPLOY_DIR@.
+[Unit]
+Description=SplittingWisdom stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=@DEPLOY_DIR@
+ExecStart=/usr/bin/docker compose up -d --no-build
+ExecStop=/usr/bin/docker compose stop
+TimeoutStartSec=300
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

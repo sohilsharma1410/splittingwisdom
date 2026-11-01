@@ -12,7 +12,7 @@ export function MobileNav({ onNewBill }: { onNewBill: () => void }) {
       <Button
         onClick={onNewBill}
         size="fab"
-        className="fixed bottom-20 right-4 z-40 md:hidden"
+        className="fixed bottom-20 right-4 z-40 transition-transform hover:scale-105 active:scale-95 md:hidden"
         aria-label="New bill"
       >
         <Plus className="h-6 w-6" aria-hidden="true" />
@@ -31,7 +31,7 @@ export function MobileNav({ onNewBill }: { onNewBill: () => void }) {
               href={item.href}
               className={cn(
                 "flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium",
-                isActive ? "text-mint" : "text-muted-foreground",
+                isActive ? "text-mint-ink" : "text-muted-foreground",
               )}
               aria-current={isActive ? "page" : undefined}
             >

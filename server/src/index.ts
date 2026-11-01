@@ -1,16 +1,22 @@
 import "dotenv/config";
 import express, { type ErrorRequestHandler } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import { sql } from "drizzle-orm";
-import { sessionMiddleware } from "./session.js";
-import { db } from "./db.js";
+import { closeSessionStore, sessionMiddleware } from "./session.js";
+import { closeDb, db } from "./db.js";
+import { createShutdown } from "./lib/graceful-shutdown.js";
+import { installClientServing } from "./lib/serve-client.js";
 import authRouter from "./routes/auth.js";
 import groupsRouter from "./routes/groups.js";
 import billsRouter from "./routes/bills.js";
 import balancesRouter from "./routes/balances.js";
 import usersRouter from "./routes/users.js";
+import settlementsRouter from "./routes/settlements.js";
+import receiptsRouter from "./routes/receipts.js";
+import { installRoleFencing } from "./roles/install.js";
 
-const app = express();
+export const app = express();
 const PORT = process.env.PORT ?? 4000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
 
@@ -20,12 +26,17 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
 // (required for SameSite=None, which cross-origin client<->API needs).
 app.set("trust proxy", 1);
 
-app.use(
-  cors({
-    origin: CLIENT_ORIGIN,
-    credentials: true,
-  }),
-);
+// CSP is still off, including when this server hands out the built client (see BACKLOG.md).
+app.use(helmet({ contentSecurityPolicy: false }));
+// No-op unless SERVE_CLIENT=true (the Pi). Before cors and sessions: the app's files need neither.
+installClientServing(app);
+// The other copy of the app (a different origin) probes these to decide whether to fail over; GET only, no cookies.
+const healthCors = cors({ origin: "*", methods: ["GET"] });
+const appCors = cors({
+  origin: CLIENT_ORIGIN,
+  credentials: true,
+});
+app.use((req, res, next) => (req.path.startsWith("/api/health") ? healthCors(req, res, next) : appCors(req, res, next)));
 app.use(express.json());
 app.use(sessionMiddleware);
 
@@ -50,11 +61,17 @@ app.get("/api/health/db", async (_req, res) => {
   }
 });
 
+// Roles & fencing (plan S3): GET /api/health/role, 503 on mutating /api routes
+// while this node isn't the active primary. No-op unless APP_ROLE is set.
+const roleRuntime = installRoleFencing(app);
+
 app.use("/api/auth", authRouter);
 app.use("/api/groups", groupsRouter);
 app.use("/api/bills", billsRouter);
 app.use("/api/balances", balancesRouter);
 app.use("/api/users", usersRouter);
+app.use("/api/settlements", settlementsRouter);
+app.use("/api/receipts", receiptsRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ error: { message: "Not found." } });
@@ -66,6 +83,17 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
 };
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`SplittingWisdom API listening on port ${PORT}`);
-});
+// Integration tests (vitest sets VITEST) import `app` and drive it with
+// supertest on an ephemeral port instead of binding PORT.
+if (!process.env.VITEST) {
+  const server = app.listen(PORT, () => {
+    console.log(`SplittingWisdom API listening on port ${PORT}`);
+  });
+
+  const shutdown = createShutdown({
+    server,
+    cleanup: [() => roleRuntime.stop(), closeSessionStore, closeDb],
+  });
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+}

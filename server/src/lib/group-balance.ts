@@ -10,20 +10,25 @@ import {
   type PairwiseBalance,
 } from "@splittingwisdom/shared";
 
-/** Loads a group's bills/settlements and runs them through the balance engine. */
-export async function computeGroupBalances(groupId: number): Promise<{
-  pairwise: PairwiseBalance[];
-  lastActivity: Date | null;
-}> {
-  const [groupBills, groupSettlements] = await Promise.all([
-    db.query.bills.findMany({
-      where: eq(bills.groupId, groupId),
-      with: { items: { with: { assignments: true } } },
-    }),
-    db.query.settlements.findMany({ where: eq(settlements.groupId, groupId) }),
-  ]);
-
-  const billsForBalance: BillForBalance[] = groupBills.map((b) => ({
+/** A loaded bill (with items and assignments) in the shape the balance engine takes. */
+export function toBillForBalance(b: {
+  paidByMemberId: number;
+  taxAmount: number;
+  tipAmount: number;
+  serviceFeeAmount: number;
+  discountAmount: number;
+  items: {
+    price: number;
+    assignments: {
+      memberId: number;
+      splitType: "equal" | "percentage" | "ratio" | "custom";
+      percentage: number | null;
+      ratio: number | null;
+      customAmount: number | null;
+    }[];
+  }[];
+}): BillForBalance {
+  return {
     paidByMemberId: b.paidByMemberId,
     taxAmount: b.taxAmount,
     tipAmount: b.tipAmount,
@@ -39,12 +44,38 @@ export async function computeGroupBalances(groupId: number): Promise<{
         customAmount: a.customAmount,
       })),
     })),
-  }));
-  const settlementsForBalance: SettlementForBalance[] = groupSettlements.map((s) => ({
-    payerMemberId: s.payerMemberId,
-    recipientMemberId: s.recipientMemberId,
-    amount: s.amount,
-  }));
+  };
+}
+
+export function toSettlementForBalance(s: {
+  payerMemberId: number;
+  recipientMemberId: number;
+  amount: number;
+}): SettlementForBalance {
+  return { payerMemberId: s.payerMemberId, recipientMemberId: s.recipientMemberId, amount: s.amount };
+}
+
+/** Anything with `.query` — the pool itself or a transaction, so callers can read inside their own transaction. */
+type QueryExecutor = Pick<typeof db, "query">;
+
+/** Loads a group's bills/settlements and runs them through the balance engine. */
+export async function computeGroupBalances(
+  groupId: number,
+  executor: QueryExecutor = db,
+): Promise<{
+  pairwise: PairwiseBalance[];
+  lastActivity: Date | null;
+}> {
+  const [groupBills, groupSettlements] = await Promise.all([
+    executor.query.bills.findMany({
+      where: eq(bills.groupId, groupId),
+      with: { items: { with: { assignments: true } } },
+    }),
+    executor.query.settlements.findMany({ where: eq(settlements.groupId, groupId) }),
+  ]);
+
+  const billsForBalance = groupBills.map(toBillForBalance);
+  const settlementsForBalance = groupSettlements.map(toSettlementForBalance);
 
   const lastActivity = groupBills.reduce<Date | null>((latest, b) => {
     return !latest || b.createdAt > latest ? b.createdAt : latest;

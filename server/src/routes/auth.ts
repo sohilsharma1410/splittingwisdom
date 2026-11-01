@@ -11,7 +11,7 @@ import {
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { isUniqueViolation } from "../lib/pg-errors.js";
-import { rateLimit } from "../middleware/rate-limit.js";
+import { rateLimit, rateLimitByIp, rateLimitByIpAndEmail } from "../middleware/rate-limit.js";
 
 const router = Router();
 const BCRYPT_ROUNDS = 12;
@@ -32,61 +32,71 @@ function toPublicUser(user: {
   };
 }
 
-router.post("/register", async (req, res) => {
-  const parsed = registerSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: { message: parsed.error.issues[0].message } });
-    return;
-  }
-  const { email, displayName, password } = parsed.data;
-
-  try {
-    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const [user] = await db
-      .insert(users)
-      .values({ email, displayName, passwordHash })
-      .returning();
-
-    req.session.userId = user.id;
-    res.status(201).json({ data: { user: toPublicUser(user) } });
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      res
-        .status(409)
-        .json({ error: { message: "An account with that email already exists." } });
+router.post(
+  "/register",
+  rateLimitByIp({ max: 30, windowMs: 60 * 60 * 1000, message: "Too many sign-ups from this network. Try again in an hour." }),
+  async (req, res) => {
+    const parsed = registerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: { message: parsed.error.issues[0].message } });
       return;
     }
-    throw err;
-  }
-});
+    const { email, displayName, password } = parsed.data;
 
-router.post("/login", async (req, res) => {
-  const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: { message: parsed.error.issues[0].message } });
-    return;
-  }
-  const { email, password } = parsed.data;
+    try {
+      const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      const [user] = await db
+        .insert(users)
+        .values({ email, displayName, passwordHash })
+        .returning();
 
-  const user = await db.query.users.findFirst({
-    where: eq(users.email, email),
-  });
+      req.session.userId = user.id;
+      res.status(201).json({ data: { user: toPublicUser(user) } });
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        res
+          .status(409)
+          .json({ error: { message: "An account with that email already exists." } });
+        return;
+      }
+      throw err;
+    }
+  },
+);
 
-  const invalidCredentialsMessage = "Incorrect email or password.";
-  if (!user) {
-    res.status(401).json({ error: { message: invalidCredentialsMessage } });
-    return;
-  }
+const LOGIN_BLOCKED_MESSAGE = "Too many login attempts. Wait a few minutes and try again.";
+router.post(
+  "/login",
+  rateLimitByIp({ max: 200, windowMs: 15 * 60 * 1000, message: LOGIN_BLOCKED_MESSAGE }),
+  rateLimitByIpAndEmail({ max: 10, windowMs: 15 * 60 * 1000, message: LOGIN_BLOCKED_MESSAGE }),
+  async (req, res) => {
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: { message: parsed.error.issues[0].message } });
+      return;
+    }
+    const { email, password } = parsed.data;
 
-  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
-  if (!passwordMatches) {
-    res.status(401).json({ error: { message: invalidCredentialsMessage } });
-    return;
-  }
+    const user = await db.query.users.findFirst({
+      where: eq(users.email, email),
+    });
 
-  req.session.userId = user.id;
-  res.json({ data: { user: toPublicUser(user) } });
-});
+    const invalidCredentialsMessage = "Incorrect email or password.";
+    if (!user) {
+      res.status(401).json({ error: { message: invalidCredentialsMessage } });
+      return;
+    }
+
+    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordMatches) {
+      res.status(401).json({ error: { message: invalidCredentialsMessage } });
+      return;
+    }
+
+    req.session.userId = user.id;
+    res.json({ data: { user: toPublicUser(user) } });
+  },
+);
 
 router.post("/logout", (req, res) => {
   req.session.destroy((err) => {

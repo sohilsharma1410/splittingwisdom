@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { SettleButton } from "@/components/settlements/settle-button";
 import { format } from "date-fns";
-import { Scale, TrendingUp, TrendingDown, CheckCircle2 } from "lucide-react";
+import { Scale, TrendingUp, TrendingDown, CheckCircle2, Sparkles } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,10 +19,12 @@ function BalanceCard({ balance }: { balance: BalanceSummaryItem }) {
   const isSettled = balance.netAmount === 0;
 
   return (
-    <Link
-      href={`/balance/${balance.personId}`}
-      className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4 pr-20 transition-shadow hover:shadow-md md:pr-4"
-    >
+    <div className="relative flex items-center gap-3 rounded-xl border border-border bg-surface p-4 pr-20 card-lift md:pr-4">
+      <Link
+        href={`/balance/${balance.personId}`}
+        aria-label={`View balance with ${balance.displayName}`}
+        className="absolute inset-0 rounded-xl"
+      />
       <InitialsAvatar name={balance.displayName} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{balance.displayName}</p>
@@ -34,8 +37,8 @@ function BalanceCard({ balance }: { balance: BalanceSummaryItem }) {
           className={cn(
             "flex items-center gap-1 text-sm font-semibold",
             isSettled && "text-muted-foreground",
-            !isSettled && isOwedToMe && "text-success",
-            !isSettled && !isOwedToMe && "text-coral",
+            !isSettled && isOwedToMe && "text-success-ink",
+            !isSettled && !isOwedToMe && "text-coral-ink",
           )}
         >
           {isSettled ? (
@@ -50,8 +53,15 @@ function BalanceCard({ balance }: { balance: BalanceSummaryItem }) {
         <span className="text-xs text-muted-foreground">
           {isSettled ? "" : isOwedToMe ? "owes you" : "you owe"}
         </span>
+        {!isSettled && (
+          <SettleButton
+            personId={balance.personId}
+            displayName={balance.displayName}
+            netAmount={balance.netAmount}
+          />
+        )}
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -92,8 +102,8 @@ export default function Balances() {
           <p
             className={cn(
               "tabular-currency mt-1 text-2xl font-semibold",
-              data.netBalance > 0 && "text-success",
-              data.netBalance < 0 && "text-coral",
+              data.netBalance > 0 && "text-success-ink",
+              data.netBalance < 0 && "text-coral-ink",
             )}
           >
             {data.netBalance === 0 ? "Settled" : formatPaise(Math.abs(data.netBalance))}
@@ -101,17 +111,38 @@ export default function Balances() {
         </div>
         <div className="rounded-xl border border-border bg-surface p-4">
           <p className="text-sm text-muted-foreground">Owed to you</p>
-          <p className="tabular-currency mt-1 text-2xl font-semibold text-success">
+          <p className="tabular-currency mt-1 text-2xl font-semibold text-success-ink">
             {formatPaise(data.totalOwedToMe)}
           </p>
         </div>
         <div className="rounded-xl border border-border bg-surface p-4">
           <p className="text-sm text-muted-foreground">You owe</p>
-          <p className="tabular-currency mt-1 text-2xl font-semibold text-coral">
+          <p className="tabular-currency mt-1 text-2xl font-semibold text-coral-ink">
             {formatPaise(data.totalIOwe)}
           </p>
         </div>
       </div>
+
+      {data.simplifiableGroups.length > 0 && (
+        <section className="space-y-2 rounded-xl border border-border bg-surface p-4" aria-label="Fewer payments possible">
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <Sparkles className="h-4 w-4 text-mint-ink" aria-hidden="true" />
+            Fewer payments possible
+          </h2>
+          <ul className="space-y-1">
+            {data.simplifiableGroups.map((g) => (
+              <li key={g.groupId}>
+                <Link href={`/group/${g.groupId}#settle-up`} className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-foreground/5">
+                  <span className="truncate font-medium">{g.groupName}</span>
+                  <span className="shrink-0 text-muted-foreground">
+                    {g.directCount} debts → {g.simplifiedCount} payment{g.simplifiedCount === 1 ? "" : "s"}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="flex gap-2">
         {(

@@ -1,7 +1,8 @@
 import { GoogleGenAI, createPartFromBase64 } from "@google/genai";
 import { z } from "zod";
 
-const MODEL = "gemini-2.0-flash";
+// Configurable because Google retires model ids; check it still exists before relying on OCR.
+const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 const TIMEOUT_MS = 30_000;
 
 // Lazily created on first actual use, not at import time — a missing key
@@ -163,7 +164,11 @@ export async function extractReceipt(buffer: Buffer, mimeType: string): Promise<
         raw.total,
       ),
     };
-  } catch {
+  } catch (err) {
+    // The caller turns null into "couldn't read this receipt", so without this
+    // a retired model or bad key is indistinguishable from an unreadable photo.
+    // Message only — never the image or the model's raw output.
+    console.error(`Gemini extraction failed (model ${MODEL}):`, err instanceof Error ? err.message : "unknown error");
     return null;
   } finally {
     clearTimeout(timeout);
