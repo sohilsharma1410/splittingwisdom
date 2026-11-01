@@ -34,9 +34,17 @@ The owner chose to run receipt OCR on the Pi instead of Gemini (D18). The plan i
 plus a parser, because vision models can invent prices. Scanning falls back to manual
 entry on Render.
 
-**Step 1, the speed test, is in `deploy/pi/ocr-spike/`.** So far it has only run on an
-x86 computer, using a stand-in for Docker, so the Dockerfile is untested and there are no
-Pi timings yet.
+**Step 1, the speed test (`deploy/pi/ocr-spike/`), passed on the Pi.** On 24 public samples
+at phone-photo size, with 3 threads and no network:
+
+| Model | Typical scan | Slowest | Peak memory | Slowest app health check |
+|---|---|---|---|---|
+| Small (chosen) | 2.8s | 6.4s | 734 MB | 0.01s, none failed |
+| Tiny | 1.3s | 2.3s | 516 MB | 0.01s, none failed |
+
+The health check doesn't query the database, so step 3 should recheck with real requests.
+On the Pi the small model found prices 39/39 and totals 17/19 on real photos, and prices
+29/30 and totals 4/4 on the invoices. The table below is a larger run, on x86.
 
 | 120 public samples, x86 | Prices found | Totals found | Item names exact | Typical time |
 |---|---|---|---|---|
@@ -57,6 +65,24 @@ Postgres and the API. The test doesn't set one and reports peak memory instead.
 
 Rows from tilted photos come back out of order, so the parser has to use the text's
 position on the page. Receipt photos must never be committed, because the repo is public.
+
+**Step 2, the parser, is `server/src/lib/receipt-parser.ts`.** It isn't connected to the app
+yet. It only uses made-up receipts in its tests. An item's `price` is the line total, because
+balances use `price` directly and never multiply by quantity.
+
+| Parser on 120 public samples, small model, x86 | Items right | Totals right | Totals wrong | No total | High confidence |
+|---|---|---|---|---|---|
+| Real photos (CORD-v2, 100) | 174/232 | 68/87 | 6 | 13 | 29, every checkable total right (28/28) |
+| Synthetic Indian invoices (20) | 151/167 | 20/20 | 0 | 0 | 0 |
+
+All 6 wrong totals were marked low confidence, mostly from OCR misreads. 9 real photos gave no
+result and would go to manual entry. The CORD-v2 run rewrites rupiah amounts to plain numbers
+and isn't tuned to Indonesian wording, so it tests structure, not Indian bills. The invoices
+are never high confidence because they print rounded line totals that don't add up exactly.
+Real Indian restaurant bills are still untested.
+
+**Bug in the Gemini path, not fixed:** `computeTotalsMismatch` in `server/src/lib/gemini.ts`
+multiplies price by quantity, which doesn't match how balances work.
 
 ## What runs where
 
