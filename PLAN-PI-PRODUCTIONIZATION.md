@@ -150,9 +150,9 @@ The Pi cannot detect or announce its own death. The standby side must be the obs
 ### P2 — Containerised stack (CLAUDE)
 File layout (new, on `dev-pi`): `deploy/pi/docker-compose.yml`, `deploy/pi/.env.example`, `deploy/pi/Dockerfile.api`, `deploy/pi/README.md`.
 
-- [ ] P2.1 `postgres:17` container; data on a named volume on the SD card; settings: `fsync=on`, `synchronous_commit=on`, `full_page_writes=on`, `wal_level=logical` (needed if S2 chooses logical replication), `max_wal_size` modest, `shared_buffers=1GB`, `max_connections=50`.
-- [ ] P2.2 `api` container: multi-stage build of `shared` → `server` → `client`, Node 22 on arm64. **Express serves the built client** (`client/dist`) with SPA fallback, so one origin serves PWA + API (also removes CORS need on the Pi).
-- [ ] P2.3 `tailscale` container (or host install) with `TS_AUTHKEY` (reusable, **tagged**, key expiry **disabled** for this node), `tailscale serve` → `localhost:4000`, `tailscale funnel 443 on`.
+- [x] P2.1 `postgres:17` container; data on a named volume on the SD card; settings: `fsync=on`, `synchronous_commit=on`, `full_page_writes=on`, `wal_level=logical` (needed if S2 chooses logical replication), `max_wal_size` modest, `shared_buffers=1GB`, `max_connections=50`.
+- [x] P2.2 `api` container: multi-stage build of `shared` → `server` → `client`, Node 22 on arm64. **Express serves the built client** (`client/dist`) with SPA fallback, so one origin serves PWA + API (also removes CORS need on the Pi).
+- [x] P2.3 `tailscale` container (or host install) with `TS_AUTHKEY` (reusable, **tagged**, key expiry **disabled** for this node), `tailscale serve` → `localhost:4000`, `tailscale funnel 443 on`.
 - [ ] P2.4 `restart: unless-stopped` on every service; `depends_on` with health checks; systemd unit to `docker compose up -d` on boot.
 - [x] P2.5 `/api/health` (liveness, no DB), `/api/health/db` (query), new `/api/health/role` returning `{role, active, lastSyncAt, lagSeconds}`.
 - [x] P2.6 Graceful shutdown (SIGTERM → stop accepting → drain → close pool) so `docker stop`/shutdown never kills mid-transaction.
@@ -568,7 +568,7 @@ curl -s https://<pi>.<tailnet>.ts.net/api/health/role
 | 2026-11-01 | `61a81c4` | **D1** PWA: manifest/icons/service worker, client failover (`client/src/lib/failover.ts`, 23 unit tests), install help, health CORS |
 | 2026-11-01 | `52b902f` | **D2a** settlements: rules in `shared/lib/settlement.ts`, `POST/GET /api/settlements`, dialog, history, derived bill status |
 | 2026-11-01 | (this one) | **D2b/D2c** simplify-debts view, onboarding, motion pass, a11y fixes (contrast tokens, names, pre-paint theme) |
-| 2026-11-01 | (branch `dev-pi-p`) | **P3 + P2 code** `DATABASE_SSL`/`DATABASE_POOLER`, local receipts (`STORAGE_DRIVER`), `SERVE_CLIENT`, graceful shutdown, `server/src/migrate.ts`, `deploy/pi/`. P2.1–P2.4 stay open until `deploy/pi/smoke.sh` passes on the Pi |
+| 2026-11-01 | (branch `dev-pi-p`) | **P3 + P2 code** `DATABASE_SSL`/`DATABASE_POOLER`, local receipts (`STORAGE_DRIVER`), `SERVE_CLIENT`, graceful shutdown, `server/src/migrate.ts`, `deploy/pi/`. `deploy/pi/smoke.sh` passed on the Pi: 62/62 plus login surviving a full restart (M1 QA-1). P2.4 stays open until a reboot is confirmed to bring the stack back |
 
 **Still open in D2:** D2.1's `Idempotency-Key` handling and `requireWritable` are deliberately *not* wired yet — they land with workstream S (S6.1 / S3). The client already sends the key.
 
