@@ -15,7 +15,7 @@ import sys
 import time
 from pathlib import Path
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from rapidocr import ModelType, RapidOCR
 
 SUPPORTED = {".jpg", ".jpeg", ".png", ".webp"}
@@ -39,7 +39,20 @@ def make_engine(model):
     if model == "tiny":
         params["Det.model_type"] = ModelType.TINY
         params["Rec.model_type"] = ModelType.TINY
-    return RapidOCR(params=params)
+    engine = RapidOCR(params=params)
+    warm_up(engine)
+    return engine
+
+
+def warm_up(engine):
+    """Forces the models to load, because RapidOCR otherwise waits for the first scan.
+    Uses real text, since a blank image would stop before the recognition model."""
+    image = Image.new("RGB", (900, 200), "white")
+    ImageDraw.Draw(image).text((40, 60), "TOTAL 123.45", fill="black", font=ImageFont.load_default(size=72))
+    buffer = io.BytesIO()
+    image.save(buffer, "PNG")
+    if not engine(buffer.getvalue()).txts:
+        raise RuntimeError("The OCR warm-up read nothing, so the models aren't working.")
 
 
 def load_like_the_app(path):

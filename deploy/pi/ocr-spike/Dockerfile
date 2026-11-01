@@ -7,5 +7,6 @@ RUN pip install --no-cache-dir rapidocr==3.10.0 onnxruntime==1.31.1
 WORKDIR /app
 COPY spike.py fetch_samples.py score.py ./
 
-# Downloads the tiny models and fails the build early if anything can't load.
+# Loads both models and reads a test image. This downloads the tiny models, and fails
+# the build here if a model is missing or broken.
 RUN python -c "from spike import make_engine; make_engine('small'); make_engine('tiny')"

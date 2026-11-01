@@ -50,6 +50,11 @@ on the page, not only on the right row. The samples aren't Indian restaurant bil
 is Indonesian, and the Indian set is synthetic wholesale invoices. Real Indian bills are
 still needed before the accuracy test in step 4.
 
+**Memory limits don't work on the Pi yet.** Docker reports that the kernel doesn't support
+them, so `--memory` is ignored. The OCR service needs a cap in step 3, which means turning on
+the kernel's memory cgroup and rebooting. Until then, a limit in Compose wouldn't protect
+Postgres and the API. The test doesn't set one and reports peak memory instead.
+
 Rows from tilted photos come back out of order, so the parser has to use the text's
 position on the page. Receipt photos must never be committed, because the repo is public.
 
@@ -71,6 +76,7 @@ position on the page. Receipt photos must never be committed, because the repo i
   and Postgres isn't published.
 - **SSH uses a password for now** (D15), limited to the LAN and the tailnet by ufw. This
   is why P1.1 is still open.
+- **Memory cgroup:** off, so Docker memory limits are ignored (see Local OCR above).
 - **Swap:** Trixie uses `rpi-swap`, so `dphys-swapfile` doesn't exist.
 - **Flashing:** Raspberry Pi Imager below 2.0 silently skips customisation on Trixie.
   Use 2.x and check that `user-data` on `bootfs` has your settings before booting.

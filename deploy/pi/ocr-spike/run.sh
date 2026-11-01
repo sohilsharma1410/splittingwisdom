@@ -56,7 +56,7 @@ for model in tiny small; do
 
   status=0
   docker run --rm --network none --read-only --tmpfs /tmp \
-    --memory 2g --memory-swap 2g --cpuset-cpus 0-2 \
+    --cpuset-cpus 0-2 \
     --user "$(id -u):$(id -g)" \
     -v "$PHOTOS:/photos:ro" -v "$RESULTS:/results" \
     "$IMAGE" python spike.py "$model" /photos /results || status=$?
@@ -64,11 +64,7 @@ for model in tiny small; do
   kill "$WATCHER" 2>/dev/null || true
   wait "$WATCHER" 2>/dev/null || true
 
-  if [ "$status" = 137 ]; then
-    echo "Result: ran out of memory (2 GB limit)"
-  elif [ "$status" != 0 ]; then
-    echo "Result: failed with exit code $status"
-  fi
+  [ "$status" = 0 ] || echo "Result: failed with exit code $status"
 
   awk '
     $1 == 200 { n++; if ($2 > worst) worst = $2 }
