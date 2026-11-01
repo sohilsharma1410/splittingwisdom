@@ -369,9 +369,9 @@ Source: `PHASE-5-ocr.md` §3 and `PLAN` notes in repo history (Checkpoint C).
 
 **Bugs found by the owner testing the scan flow in the app (2026-11-01). Sohil, on `dev-bugfixes` (D20):**
 
-- [ ] D3.9 **A photo taken with the in-app camera fails OCR.** The same bill photographed with the phone's normal camera and then uploaded works. Cause unknown. Both buttons use the same `onPick` (`client/src/pages/scan-bill.tsx:48`) and the same `downscaleImage`, so compare the two files that reach the server. First get the phone, the browser, whether the app was installed, which server it used, the on-screen error, and `docker compose logs api | grep -i "local ocr"` on the Pi. Never commit the photos.
-- [ ] D3.10 **Changing a quantity after OCR doesn't update the totals.** Neither the bill total nor the check against the total the OCR detected changes. `computeTotals` in `client/src/lib/receipt-draft.ts` sums `price` and never reads `quantity`. Fix this together with D3.11, because a quantity change needs a unit cost to work from.
-- [ ] D3.11 **Each row needs separate unit cost and total fields.** Today a row has only a quantity and one price.
+- [ ] D3.9 **A photo taken with the in-app camera fails OCR.** The same bill photographed with the phone's normal camera and then uploaded works. Cause unknown. **Hardened, not confirmed (dev-bugfixes):** the client now fixes mislabelled camera types (empty, `image/jpg`), re-encodes HEIC and files over 3 MB as JPEG; still needs a retest on the phone, and the details below if it recurs. Both buttons use the same `onPick` (`client/src/pages/scan-bill.tsx:48`) and the same `downscaleImage`, so compare the two files that reach the server. First get the phone, the browser, whether the app was installed, which server it used, the on-screen error, and `docker compose logs api | grep -i "local ocr"` on the Pi. Never commit the photos.
+- [x] D3.10 **Changing a quantity after OCR doesn't update the totals.** Neither the bill total nor the check against the total the OCR detected changes. `computeTotals` in `client/src/lib/receipt-draft.ts` sums `price` and never reads `quantity`. Fix this together with D3.11, because a quantity change needs a unit cost to work from.
+- [x] D3.11 **Each row needs separate unit cost and total fields.** Today a row has only a quantity and one price.
 
 **Money rules for D3.10 and D3.11:**
 - `bill_items.price` is the **line total**. Balances use it directly and never multiply by quantity, so don't change what it means.

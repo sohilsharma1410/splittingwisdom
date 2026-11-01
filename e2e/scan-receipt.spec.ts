@@ -65,6 +65,18 @@ test("scan -> review -> confirm: everything read is editable, the total adds up,
   await page.getByLabel("Round-off (use − for a minus)").fill("-0.18");
   await expect(page.getByTestId("scan-total")).toHaveText("₹8,147.00");
 
+  // Quantity drives the total: Appam is ₹50 each, so 12 of them is ₹600 and the bill grows by ₹50.
+  await expect(page.getByLabel("Item 11 cost each")).toHaveValue("50.00");
+  await page.getByLabel("Item 11 quantity").fill("12");
+  await expect(page.getByLabel("Item 11 price")).toHaveValue("600.00");
+  await expect(page.getByTestId("scan-total")).toHaveText("₹8,197.00");
+  await expect(page.getByRole("alert", { name: "Totals don't match" })).toContainText("off by ₹50.00");
+  await page.getByLabel("Item 11 cost each").fill("45");
+  await expect(page.getByLabel("Item 11 price")).toHaveValue("540.00");
+  await page.getByLabel("Item 11 quantity").fill("11"); // back to ×11 at ₹50 via the total
+  await page.getByLabel("Item 11 price").fill("550");
+  await expect(page.getByTestId("scan-total")).toHaveText("₹8,147.00");
+
   // Confirm: lands on the bill, with the photo attached and the right money.
   await page.getByRole("button", { name: "Confirm bill" }).click();
   await page.waitForURL(/\/bill\/\d+$/);

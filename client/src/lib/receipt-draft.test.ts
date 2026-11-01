@@ -25,6 +25,14 @@ const GANBEI: ReceiptExtraction = {
 };
 const target: Parameters<typeof buildCreateBill>[1] = { groupId: 7, payerMemberId: 1, memberIds: [1, 2, 3], imagePath: "5/abcdefghijklmnop.jpg" };
 
+describe("quantity not detected", () => {
+  it("defaults to 1 when the reader gave none, zero or junk", () => {
+    const bad = [undefined, null, 0, -2, 1.5, NaN].map((quantity, n) => ({ name: `Tea ${n}`, price: 8000, quantity: quantity as unknown as number, confidence: "high" as const }));
+    const draft = draftFromExtraction({ ...GANBEI, items: bad }, "2026-11-01");
+    expect(draft.items.map((i) => i.quantity)).toEqual(["1", "1", "1", "1", "1", "1"]);
+  });
+});
+
 describe("parseMoney", () => {
   it("reads rupee text into paise, tolerating ₹, commas and spaces", () => {
     expect(parseMoney("1,300.50")).toBe(130050);

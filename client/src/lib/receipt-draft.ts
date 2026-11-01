@@ -10,6 +10,9 @@ export interface DraftItem {
   /** Rupees, the line total as printed. */
   price: string;
   quantity: string;
+  /** Rupees per unit while it's being typed; otherwise derived from price and quantity (see line-item.ts). */
+  unit?: string;
+  qtyBasis?: string;
   /** The model wasn't sure about this line. */
   low: boolean;
 }
@@ -63,7 +66,8 @@ export function draftFromExtraction(extraction: ReceiptExtraction | null, today:
         key: newItemKey(),
         name: i.name,
         price: paiseToRupeeInput(i.price),
-        quantity: String(i.quantity),
+        // No quantity read (missing, zero or junk) means one.
+        quantity: Number.isInteger(i.quantity) && i.quantity >= 1 ? String(i.quantity) : "1",
         low: i.confidence === "low",
       }))
     : [blankItem()];
