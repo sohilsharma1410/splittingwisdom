@@ -325,6 +325,11 @@ function ReviewForm({ photoUrl, result, lockedGroup, onStartOver }: { photoUrl: 
               <CurrencyInput id="scan-roundoff" value={draft.roundOff} onChange={(e) => edit({ roundOff: e.target.value })} placeholder="0.00" />
             </div>
           </div>
+          {draft.taxIncluded !== null && (
+            <p className="rounded-xl border border-border bg-surface p-3 text-sm text-muted-foreground">
+              {formatPaise(draft.taxIncluded)} of tax is already included in the item prices on this receipt, so it isn't added again.
+            </p>
+          )}
         </section>
 
         <section className="rounded-xl border border-border bg-surface p-4" aria-label="Total">

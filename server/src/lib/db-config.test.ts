@@ -10,7 +10,11 @@ describe("database connection settings", () => {
 
   it("uses plain connections and prepared statements on the Pi", () => {
     const options = postgresJsOptions({ DATABASE_SSL: "off", DATABASE_POOLER: "false" });
-    expect(options).toEqual({ prepare: true });
+    expect(options).toEqual({ prepare: true, connection: { TimeZone: "UTC" } }); // sessions write UTC even if the server runs in local time
+  });
+
+  it("leaves the startup parameter off behind Supabase's pooler, which already runs in UTC", () => {
+    expect(postgresJsOptions({ DATABASE_POOLER: "true" })).not.toHaveProperty("connection");
   });
 
   it("treats an empty value as unset", () => {

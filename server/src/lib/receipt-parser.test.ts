@@ -255,7 +255,39 @@ describe("parseReceipt: charges", () => {
   it("doesn't add tax that the prices already include", () => {
     const result = parseReceipt(receipt([["Shirt", "1050.00"], ["GST included", "50.00"], ["Grand Total", "1050.00"]]))!;
     expect(result.taxAmount).toBeNull();
+    expect(result.taxIncludedAmount).toBe(5000);
     expect(result.totalsMismatch).toBeNull();
+  });
+
+  it("handles a total that says it includes tax, with CGST and SGST listed", () => {
+    const result = parseReceipt(
+      receipt([["Toast", "1160.00"], ["CGST", "27.62"], ["SGST", "27.62"], ["TOTAL INCL. OF ALL TAX", "1160.00"]]),
+    )!;
+    expect(result.totalAmount).toBe(116000);
+    expect(result.taxAmount).toBeNull();
+    expect(result.taxIncludedAmount).toBe(5524);
+    expect(result.totalsMismatch).toBeNull();
+  });
+
+  it("reads tax written as \"Incl. GST\" as tax, not as an item", () => {
+    const result = parseReceipt(receipt([["Shirt", "1050.00"], ["Incl. GST", "50.00"], ["Grand Total", "1050.00"]]))!;
+    expect(result.items.map((item) => item.name)).toEqual(["Shirt"]);
+    expect(result.taxIncludedAmount).toBe(5000);
+    expect(result.totalsMismatch).toBeNull();
+  });
+
+  it("still ignores a GST number, with or without a space", () => {
+    for (const label of ["GSTIN: 29ABCDE1234F1Z5", "GSTIN29ABCDE1234F1Z5"]) {
+      const result = parseReceipt(receipt([[label], ["Thali", "100.00"], ["Total", "100.00"]]))!;
+      expect(result.items.map((item) => item.name)).toEqual(["Thali"]);
+      expect(result.taxAmount).toBeNull();
+    }
+  });
+
+  it("reports no included tax on an ordinary bill", () => {
+    const result = parseReceipt(receipt([["Thali", "100.00"], ["GST", "5.00"], ["Grand Total", "105.00"]]))!;
+    expect(result.taxAmount).toBe(500);
+    expect(result.taxIncludedAmount).toBeNull();
   });
 
   it("uses the final total, not the pre-tax one", () => {

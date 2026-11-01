@@ -236,6 +236,8 @@ export interface ReceiptExtraction {
   items: { name: string; price: number; quantity: number; confidence: "high" | "low" }[];
   subtotalAmount: number | null;
   taxAmount: number | null;
+  /** Tax already inside the item prices; shown for information, never added. */
+  taxIncludedAmount?: number | null;
   tipAmount: number | null;
   serviceFeeAmount: number | null;
   discountAmount: number | null;

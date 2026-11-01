@@ -26,6 +26,8 @@ export interface ReceiptDraft {
   roundOff: string;
   /** What the receipt itself says the total is, in paise (null if it wasn't read). */
   receiptTotal: number | null;
+  /** Tax that's already inside the item prices, in paise — shown, never added to the total. */
+  taxIncluded: number | null;
   /** True when the model said the whole photo was hard to read. */
   lowOverall: boolean;
 }
@@ -75,6 +77,7 @@ export function draftFromExtraction(extraction: ReceiptExtraction | null, today:
     discount: money(extraction?.discountAmount ?? null),
     roundOff: money(extraction?.roundOffAmount ?? null),
     receiptTotal: extraction?.totalAmount ?? null,
+    taxIncluded: extraction?.taxIncludedAmount ?? null,
     lowOverall: extraction?.overallConfidence === "low",
   };
 }

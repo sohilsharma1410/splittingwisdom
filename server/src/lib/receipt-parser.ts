@@ -155,7 +155,8 @@ type Kind =
  */
 function classify(words: string): Kind | null {
   const label = words.replace(/ /g, "");
-  if (/gstin|gstno|gstnumber|gstreg|fssai|taxinvoice/.test(label)) return "ignore";
+  // "gstin" but not "GST included", which runs together as "gstincluded".
+  if (/gstin(?!cl)|gstno|gstnumber|gstreg|fssai|taxinvoice/.test(label)) return "ignore";
   if (/^(?:cash|change|tender|tendered|paid|upi|card|balance|refund|received|payment|saved)\b|^(?:amount paid|you saved)\b/.test(words)) return "ignore";
   if (/^(?:cashpaid|amountpaid|yousaved|totalpaid|totalsaved|totalsavings|totaltendered|totalchange)/.test(label)) return "ignore";
   if (/^(?:noofitems|itemcount)/.test(label)) return "ignore";
@@ -163,6 +164,7 @@ function classify(words: string): Kind | null {
   if (/taxable|beforetax|pretax|exclgst/.test(label)) return "subtotal";
   if (/totaltax|totalgst|taxamount|gstamount|taxtotal/.test(label)) return "taxTotal";
   if (/servicetax/.test(label) || /^(?:output )?(?:[csiu]?gst|utgst|vat|cess|tax|kkc|sbc)\b/.test(words)) return "tax";
+  if (/^(?:incl|inclusive|includes|including)\b.*\b(?:gst|tax|taxes|vat)\b/.test(words)) return "tax";
   if (/servicecharge|servicefee|packingcharge|deliverycharge|deliveryfee|conveniencefee|covercharge/.test(label) || /^(?:service|svc|srvc|srvchg|sc)$/.test(words)) return "service";
   if (/^(?:tip|tips)\b|gratuity/.test(words)) return "tip";
   if (/discount/.test(label) || /^(?:disc|coupon|less|offer)\b/.test(words)) return "discount";
@@ -450,8 +452,11 @@ export function parseReceipt(boxes: OcrBox[]): ExtractionResult | null {
   const withoutRound = (includeTax: boolean) =>
     itemsSum + (includeTax ? (tax ?? 0) : 0) + (serviceFee ?? 0) + (tip ?? 0) - (discount ?? 0);
 
-  // Prices that already include GST: the bill lists the tax for information only.
-  if (total !== null && tax !== null && roundOff === null && withoutRound(true) !== total && withoutRound(false) === total) {
+  // Prices that already include GST: the bill lists the tax for information only, and adding
+  // it again would charge everyone twice. Under 50 paise is rounding, as in the shared totals check.
+  let taxIncluded: number | null = null;
+  if (total !== null && tax !== null && roundOff === null && withoutRound(true) !== total && Math.abs(withoutRound(false) - total) < 50) {
+    taxIncluded = tax;
     tax = null;
   }
 
@@ -478,6 +483,7 @@ export function parseReceipt(boxes: OcrBox[]): ExtractionResult | null {
     items: items.map(({ name, price, quantity, confidence }) => ({ name, price, quantity, confidence })),
     subtotalAmount: subtotal,
     taxAmount: tax,
+    taxIncludedAmount: taxIncluded,
     tipAmount: tip,
     serviceFeeAmount: serviceFee,
     discountAmount: discount,

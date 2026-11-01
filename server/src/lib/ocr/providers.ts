@@ -12,6 +12,7 @@ import { GoogleGenAI, createPartFromBase64 } from "@google/genai";
  *   OCR_BASE_URL   openai only. Default http://localhost:11434/v1 (Ollama)
  *   OCR_API_KEY    openai only, optional (local servers ignore it)
  *   OCR_TIMEOUT_MS default 60000; local models on a laptop may need 180000+
+ *   OCR_FALLBACK_MODEL gemini only: used once if the main model is overloaded (default gemini-3.5-flash-lite; "none" disables)
  *   GEMINI_API_KEY gemini only
  */
 export interface VisionRequest {
@@ -27,9 +28,18 @@ export interface OcrConfig {
   model: string;
   baseUrl: string | null;
   timeoutMs: number;
+  /** Tried once if the main model stays overloaded (Gemini only; "" or "none" turns it off). */
+  fallbackModel: string | null;
 }
 
 const OPENAI_ALIASES = new Set(["openai", "ollama", "lmstudio", "lm-studio", "llamacpp", "llama.cpp", "vllm", "local"]);
+
+function fallbackFor(env: NodeJS.ProcessEnv): string | null {
+  const raw = env.OCR_FALLBACK_MODEL;
+  if (raw === undefined) return "gemini-3.5-flash-lite"; // fast, rarely overloaded
+  const v = raw.trim();
+  return v === "" || v.toLowerCase() === "none" ? null : v;
+}
 
 export function readOcrConfig(env: NodeJS.ProcessEnv = process.env): OcrConfig {
   const raw = (env.OCR_PROVIDER || "gemini").trim().toLowerCase();
@@ -40,6 +50,7 @@ export function readOcrConfig(env: NodeJS.ProcessEnv = process.env): OcrConfig {
       model: env.OCR_MODEL?.trim() || "",
       baseUrl: (env.OCR_BASE_URL?.trim() || "http://localhost:11434/v1").replace(/\/$/, ""),
       timeoutMs,
+      fallbackModel: null,
     };
   }
   if (raw !== "gemini") throw new Error(`OCR_PROVIDER must be "gemini" or "openai" (got "${env.OCR_PROVIDER}").`);
@@ -49,6 +60,7 @@ export function readOcrConfig(env: NodeJS.ProcessEnv = process.env): OcrConfig {
     model: env.OCR_MODEL?.trim() || env.GEMINI_MODEL?.trim() || "gemini-3.5-flash",
     baseUrl: null,
     timeoutMs,
+    fallbackModel: fallbackFor(env),
   };
 }
 

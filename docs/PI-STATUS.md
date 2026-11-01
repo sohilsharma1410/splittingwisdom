@@ -109,7 +109,7 @@ Agreed by both collaborators (D18, D19). Local OCR is the primary and Gemini is 
 3. Gates and `deploy/pi/smoke.sh` pass, then `dev-ocr` merges to `main`. Render and Vercel deploy on every push to `main`.
 4. Both collaborators update, check they're on the same page, and decide what's next.
 
-**Prepared so far:** `dev-ocr` has `dev-pi` merged in, up to `3213a6f`, and local OCR fills the review screen's format.
+**Prepared so far:** `dev-ocr` has `dev-pi` merged in, up to `50c5d67`, and local OCR fills the review screen's format.
 To stay in step, run `git merge origin/dev-pi` on `dev-ocr` as more arrives. Build, type check and unit tests pass. Integration tests pass apart from the two intermittent failures below. `qa-smoke` passes 73/73
 through the real OCR service on x86. Not yet checked: the merged code on the Pi, and the scan screen in a browser with local OCR.
 
@@ -119,7 +119,7 @@ through the real OCR service on x86. Not yet checked: the merged code on the Pi,
   `dev-pi` it means a local model server such as Ollama.
 - `server/src/lib/receipt-extract.ts` is a thin wrapper. It sends `rapidocr` to the `ocr` container and everything else to
   `receipt-ocr.ts` unchanged. `routes/bills.ts` imports from the wrapper. Keep that import when merging.
-- The parser fills `roundOffAmount` and uses the shared `computeTotalsMismatch`, including its 50-paise tolerance.
+- The parser fills `roundOffAmount` and `taxIncludedAmount`, and uses the shared `computeTotalsMismatch`, including its 50-paise tolerance.
 - `ocrInfo()` in the wrapper doesn't throw on a bad setting. The one in `receipt-ocr.ts` does, which would fail the request
   after the photo is saved.
 - `scripts/ocr-test.mjs` keeps `X-Forwarded-Proto`, so it can log in from the Pi itself.

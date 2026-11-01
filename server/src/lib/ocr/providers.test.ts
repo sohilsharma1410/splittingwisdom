@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { extractReceipt, ocrInfo, parseExtraction } from "../receipt-ocr.js";
+import { extractReceipt, ocrInfo, parseExtraction, withRetries } from "../receipt-ocr.js";
 import { readOcrConfig } from "./providers.js";
 
 const GOOD = {
@@ -32,6 +32,33 @@ describe("readOcrConfig", () => {
   });
 });
 
+describe("overload handling", () => {
+  const busy = () => new Error('{"error":{"code":503,"message":"high demand","status":"UNAVAILABLE"}}');
+  it("retries 'high demand' and rate-limit errors, then succeeds", async () => {
+    let calls = 0;
+    const result = await withRetries(async () => { if (++calls < 3) throw busy(); return "ok"; }, [1, 1]);
+    expect(result).toBe("ok");
+    expect(calls).toBe(3);
+  });
+  it("gives up after the allowed retries and reports the overload", async () => {
+    let calls = 0;
+    await expect(withRetries(async () => { calls++; throw busy(); }, [1, 1])).rejects.toThrow(/503/);
+    expect(calls).toBe(3);
+  });
+  it("does not retry real errors (bad key, missing model)", async () => {
+    let calls = 0;
+    await expect(withRetries(async () => { calls++; throw new Error("404 model not found"); }, [1, 1])).rejects.toThrow(/404/);
+    expect(calls).toBe(1);
+  });
+  it("uses gemini-3.5-flash-lite as the Gemini fallback unless told otherwise", () => {
+    expect(readOcrConfig({}).fallbackModel).toBe("gemini-3.5-flash-lite");
+    expect(readOcrConfig({ OCR_FALLBACK_MODEL: "gemini-x" }).fallbackModel).toBe("gemini-x");
+    expect(readOcrConfig({ OCR_FALLBACK_MODEL: "none" }).fallbackModel).toBeNull();
+    expect(readOcrConfig({ OCR_FALLBACK_MODEL: "" }).fallbackModel).toBeNull();
+    expect(readOcrConfig({ OCR_PROVIDER: "ollama", OCR_MODEL: "m" }).fallbackModel).toBeNull();
+  });
+});
+
 describe("parseExtraction — forgiving of weaker models", () => {
   it("accepts clean JSON", () => {
     const r = parseExtraction(JSON.stringify(GOOD))!;
@@ -53,6 +80,24 @@ describe("parseExtraction — forgiving of weaker models", () => {
   it("keeps a negative round-off, and rejects negative prices", () => {
     expect(parseExtraction(JSON.stringify({ ...GOOD, round_off: -18 }))!.roundOffAmount).toBe(-18);
     expect(parseExtraction(JSON.stringify({ ...GOOD, items: [{ name: "x", price: -5 }] }))!.items).toEqual([]);
+  });
+  it("AIRR TOAST receipt: tax that is already inside the prices is not added again", () => {
+    // Items 450+370+340 = ₹1,160 = the printed total; "GST 55.24" is inside that. The model reported it as added tax.
+    const r = parseExtraction(JSON.stringify({ merchant: "AIRR TOAST", date: "2026-10-11", items: [
+      { name: "Affogato", price: 45000, quantity: 1, confidence: "low" }, { name: "Mochaccino", price: 37000, quantity: 1, confidence: "high" }, { name: "Iced Latte", price: 34000, quantity: 1, confidence: "high" }],
+      tax: 5524, total: 116000, overall_confidence: "high" }))!;
+    expect(r.taxAmount).toBeNull();
+    expect(r.taxIncludedAmount).toBe(5524);
+    expect(r.totalsMismatch).toBeNull();
+  });
+  it("keeps tax that really is added on top (items + tax = total)", () => {
+    const r = parseExtraction(JSON.stringify({ ...GOOD, tax: 1550, total: 32550 }))!;
+    expect(r.taxAmount).toBe(1550);
+    expect(r.taxIncludedAmount).toBeNull();
+  });
+  it("trusts the model when it reports included tax itself", () => {
+    const r = parseExtraction(JSON.stringify({ ...GOOD, tax: null, tax_included: 1550, total: 31000 }))!;
+    expect(r).toMatchObject({ taxAmount: null, taxIncludedAmount: 1550 });
   });
   it("returns null for non-JSON", () => {
     expect(parseExtraction("I cannot read this image.")).toBeNull();
