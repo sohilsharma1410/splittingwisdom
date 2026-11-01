@@ -33,6 +33,7 @@ import {
 } from "./outbox.js";
 import { syncSessions } from "./sessions.js";
 import { startSupabasePing } from "./supabase-ping.js";
+import { systemStateGuard } from "./fence.js";
 import { logEvent, errorMessage } from "./log.js";
 
 export interface AgentHooks extends ApplyHooks {
@@ -219,7 +220,8 @@ export class SyncAgent {
 async function main(): Promise<void> {
   await import("dotenv/config");
   const cfg = loadSyncConfig();
-  const agent = new SyncAgent(cfg);
+  const fenced = (process.env.SYNC_FENCE ?? "on").toLowerCase() !== "off";
+  const agent = new SyncAgent(cfg, fenced ? { guard: systemStateGuard } : {});
 
   if (process.argv.includes("--resync")) {
     const queued = await enqueueFullResync(agent.source);

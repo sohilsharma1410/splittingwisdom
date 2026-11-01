@@ -284,3 +284,30 @@ describe("controller against a real authority database", () => {
     }
   });
 });
+
+describe("forward sync is fenced by system_state", () => {
+  it("ships nothing while the standby/cutover is in charge, keeps the events queued, and resumes when the state is 'pi'", async () => {
+    const { SyncAgent } = await import("../src/sync/agent.js");
+    const { systemStateGuard } = await import("../src/sync/fence.js");
+    const { testSyncConfig } = await import("./helpers/sync.js");
+    const { readLag } = await import("../src/sync/outbox.js");
+    await pi`INSERT INTO users (email, password_hash, display_name) VALUES ('f@x.test', 'h', 'F')`;
+
+    const agent = new SyncAgent(testSyncConfig(), { guard: systemStateGuard });
+    try {
+      for (const active of ["standby", "cutover"] as const) {
+        await setState(active);
+        expect(await agent.drain()).toBe(0);
+        expect((await agent.status()).pausedReason).toContain(active);
+        expect((await readLag(pi)).pending).toBe(1);
+        expect(await standby`SELECT 1 FROM users`).toHaveLength(0);
+      }
+      await setState("pi");
+      expect(await agent.drain()).toBe(1);
+      expect((await agent.status()).pausedReason).toBeNull();
+      expect(await standby`SELECT email FROM users`).toEqual([{ email: "f@x.test" }]);
+    } finally {
+      await agent.close();
+    }
+  });
+});
