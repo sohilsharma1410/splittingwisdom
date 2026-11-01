@@ -84,14 +84,22 @@ Real Indian restaurant bills are still untested.
 **Step 3, the service, is `deploy/pi/ocr/` and `server/src/lib/receipt-extract.ts`.** On the Pi,
 `POST /api/bills/extract` uses the `ocr` container. There's no scan screen yet, so people can't
 reach this from the app. Its network has no internet and holds only it and the API, and it's
-limited to 1500 MB and 3 cores. On x86 without Docker, the real flow passed `qa-smoke` 70/70. The
-Compose setup, isolation and memory limit are checked by `deploy/pi/smoke.sh`, and only the Pi can
-run those. An unknown `OCR_DRIVER` skips the scan, so a typo can't send photos to Google. Render
+limited to 1500 MB and 3 cores. On x86 without Docker, the real flow passed `qa-smoke` 70/70. On the
+Pi, `deploy/pi/smoke.sh` also passed 70/70, with a scan taking 2.2s and the slowest database request
+during it 49 ms. It confirmed no internet from the container, no route to Postgres, no host port, an
+enforced memory limit, and the app working with OCR stopped. An unknown `OCR_DRIVER` skips the scan, so a typo can't send photos to Google. Render
 will use Gemini by default when it gets this code, or manual entry if it has no key, so M4 needs a
 decision on that.
 
-**Bug in the Gemini path, not fixed:** `computeTotalsMismatch` in `server/src/lib/gemini.ts`
-multiplies price by quantity, which doesn't match how balances work.
+**Step 4, the accuracy test, needs real Indian bills.** `deploy/pi/try-receipts.sh` runs the photos
+in `~/ocr-test` through the real flow.
+
+**`dev-ocr` and `dev-pi` have diverged on OCR.** `dev-pi` improved the Gemini path (`42d2687`, `0245fe6`),
+including a fix for the totals check, and the owner will decide how the two fit together later. Merging
+needs these reconciled:
+- `ExtractionResult` gains `roundOffAmount` on `dev-pi`, while the parser folds round-off into tax or discount.
+- `dev-pi` ignores mismatches under 50 paise, while the parser reports any difference.
+- `scripts/ocr-test.mjs` differs slightly, because `dev-ocr` adds `X-Forwarded-Proto`.
 
 ## What runs where
 

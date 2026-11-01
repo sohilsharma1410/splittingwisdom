@@ -123,6 +123,9 @@ The memory limit only works with `cgroup_enable=memory cgroup_memory=1` in
 `/boot/firmware/cmdline.txt`. `smoke.sh` checks this. To see whether OCR is healthy, run
 `docker compose ps ocr` and `docker compose logs ocr`. It never logs photos or their text.
 
+To see how it reads real bills, put photos in `~/ocr-test` and run `./try-receipts.sh`. That's up to
+10 photos a run, and it adds a throwaway `qa-ocr-*` user.
+
 ## OCR speed test
 
 A temporary test for the local OCR plan (plan D18). Scans run with no network access, so
