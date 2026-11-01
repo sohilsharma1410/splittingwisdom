@@ -315,6 +315,46 @@ The same person wrote the rules and all the sentences, so the first row is the m
 The test that counts is real people's real speech, run through real speech recognition. Casual phrasing like "so did Ravi" still
 ends up blank, which is the case for adding a small model. No model has been tried.
 
+### Speech recognition test (D4.9, `deploy/pi/stt-spike/`)
+
+**Pass bars for the Pi, set before running it:**
+
+| Measure | Bar |
+|---|---|
+| A recording of up to about 30 seconds | Typically 10s or less alone, and 20s or less during OCR scans |
+| Memory | Stays inside the 1500 MB limit, with no failed clips |
+| The app during the test | No failed health checks, and the slowest under 1s |
+| Silence | Comes back empty |
+
+**Results on x86, not the Pi yet.** 281 clips, using faster-whisper 1.2.1 with int8 and 3 threads, beam 1 unless noted.
+
+| Setting | Real voices: word errors | Real voices with background speech: word errors | Generated voices: names and dishes kept | Same, with background speech |
+|---|---|---|---|---|
+| `tiny.en`, no prompt | 19.3% | 55.3% | 171/420 | 31/93 |
+| `tiny.en`, prompt | 18.9% | 56.8% | 359/420 | 69/93 |
+| `base.en`, no prompt | 13.3% | 37.4% | 227/420 | 38/93 |
+| `base.en`, prompt | 13.3% | 36.9% | 356/420 | 73/93 |
+| `base.en`, prompt, no retries | 13.3% | 35.4% | not run | 73/93 |
+| `base.en`, prompt, beam 5 | 11.2% | 59.7% | 366/420 | 77/93 |
+
+- **The prompt matters most.** Giving Whisper the group's names and the bill's items roughly doubled the names and dishes on `tiny.en`. The app knows both when someone speaks. `hotwords` gave about the same result, so the test uses the simpler prompt.
+- **`base.en` is better on real voices**, while `tiny.en` keeps up on generated names and dishes only with the prompt. The generated voices can't settle this, so the current lean is `base.en` if the Pi is fast enough.
+- **Retries:** turning them off cut the slowest clip from 9.4s to 1.8s with no loss of accuracy. Without them, background speech alone came back as "The Paneer Butter", taken from the prompt. Silence stayed empty.
+- **Beam 5:** not worth it. A little better on clean speech, much worse with background speech.
+- **`faster-whisper` 1.2.1's own audio decoder fails on `av` 19**, so the test decodes audio itself. The real service must do the same.
+
+**Words to the split matcher.** Generated voices, `base.en` with prompt, counted as exact / left blank / wrong guess:
+
+| Sentences | Perfect transcripts | Indian-style voices | US voice |
+|---|---|---|---|
+| Short | 48 / 12 / 0 of 60, across 56 short and 4 long | 67 / 38 / 7 | 38 / 16 / 2 |
+| Long | | 1 / 4 / 3 | 1 / 2 / 1 |
+| Long, background speech | | 0 / 2 / 6 | 1 / 2 / 1 |
+
+**The rules that avoid wrong guesses on clean text do make them on imperfect transcripts,** and longer speech is the real use. D4.12 has to deal with this before it can be trusted: for example, "chas" for "chaas" isn't always recognised. Confirm still catches a wrong guess, but only if the person notices.
+
+**What this doesn't show.** No public recording of people splitting a bill was found. The real voices are Indian-accented speakers reading general sentences (Common Voice, CC0, accent labels self-reported and mostly male), so they test accents, not names or dishes. The split clips come from text-to-speech: two Hindi voices reading English written in Devanagari, and one US voice. They aren't real people. Background speech is mixed in at 10 dB. Real people saying real splits in the app is still the test that counts. The clips are never committed.
+
 ## What runs where
 
 | | Pi | Render and Vercel | Supabase |
