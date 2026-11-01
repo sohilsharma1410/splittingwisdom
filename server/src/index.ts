@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express, { type ErrorRequestHandler } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import { sql } from "drizzle-orm";
 import { sessionMiddleware } from "./session.js";
 import { db } from "./db.js";
@@ -20,6 +21,8 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
 // (required for SameSite=None, which cross-origin client<->API needs).
 app.set("trust proxy", 1);
 
+// CSP is off here: the API serves JSON only today; revisit with a real policy when Express also serves the built client.
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(
   cors({
     origin: CLIENT_ORIGIN,

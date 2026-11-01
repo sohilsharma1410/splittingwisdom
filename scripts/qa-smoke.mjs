@@ -9,6 +9,9 @@
 // database those rows remain unless you clean them (see QA_CLEANUP below).
 const BASE = (process.env.BASE_URL ?? "http://localhost:4100").replace(/\/$/, "");
 const RUN = Math.random().toString(36).slice(2, 8);
+// A unique client IP per run keeps the per-IP rate limiters from tripping
+// across repeated runs (the server trusts the first X-Forwarded-For entry).
+const FAKE_IP = `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
 
 let failures = 0;
 const results = [];
@@ -26,6 +29,7 @@ class Client {
       headers: {
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
         ...(this.cookie ? { Cookie: this.cookie } : {}),
+        "X-Forwarded-For": FAKE_IP,
         ...extraHeaders,
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -120,6 +124,27 @@ async function main() {
   r = await A.req("GET", `/api/settlements?groupId=${groupId}`);
   if (r.status !== 404) await settlementChecks({ A, B, C, groupId, aId, bId, mA, mB });
   else console.log("SKIP  settlements (route not present on this build)");
+
+  // --- hardening -------------------------------------------------------------
+  const hdr = await fetch(`${BASE}/api/health`);
+  check("security headers present (nosniff) and X-Powered-By hidden",
+    hdr.headers.get("x-content-type-options") === "nosniff" && !hdr.headers.get("x-powered-by"),
+    JSON.stringify([...hdr.headers.entries()].filter(([k]) => /content-type-options|powered/.test(k))));
+
+  const victim = email("a");
+  const attacker = new Client("attacker");
+  let lastStatus = 0, firstBlockedAt = 0, retryAfter = null;
+  for (let i = 1; i <= 12; i++) {
+    const res = await attacker.req("POST", "/api/auth/login", { email: victim, password: `guess-${i}` });
+    lastStatus = res.status;
+    if (res.status === 429 && !firstBlockedAt) firstBlockedAt = i;
+  }
+  // Budget is 10 attempts per IP+email per 15 min, and this run already made 2 earlier logins as the same email.
+  check("login brute-force gets 429 once the 10-attempt budget is spent", firstBlockedAt >= 8 && firstBlockedAt <= 11, `first 429 at attempt ${firstBlockedAt}, last status ${lastStatus}`);
+  r = await attacker.req("POST", "/api/auth/login", { email: victim, password: PASSWORD });
+  check("even the correct password is refused while locked (429)", r.status === 429, `status ${r.status}`);
+  r = await attacker.req("POST", "/api/auth/login", { email: email("b"), password: PASSWORD });
+  check("a different account from the same IP is NOT locked out", r.status === 200, `status ${r.status}`);
 
   // --- logout ---------------------------------------------------------------
   r = await A.req("POST", "/api/auth/logout");
