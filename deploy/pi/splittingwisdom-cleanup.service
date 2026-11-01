@@ -1,0 +1,9 @@
+[Unit]
+Description=SplittingWisdom: delete photos from abandoned scans
+After=splittingwisdom.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=@DEPLOY_DIR@
+ExecStart=/usr/bin/docker compose exec -T api node server/dist/tools/cleanup-receipts.js --delete

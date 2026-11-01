@@ -126,6 +126,29 @@ The memory limit only works with `cgroup_enable=memory cgroup_memory=1` in
 To see how it reads real bills, put photos in `~/ocr-test` and run `./try-receipts.sh`. That's up to
 10 photos a run, and it adds a throwaway `qa-ocr-*` user.
 
+### Abandoned scan photos
+
+Every scan stores its photo before a bill exists, so cancelled scans leave photos behind. A weekly timer
+deletes photos that no bill uses and that are over 24 hours old. To install it:
+
+```bash
+cd ~/splittingwisdom/deploy/pi
+sed "s|@DEPLOY_DIR@|$PWD|" splittingwisdom-cleanup.service | sudo tee /etc/systemd/system/splittingwisdom-cleanup.service >/dev/null
+sudo cp splittingwisdom-cleanup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now splittingwisdom-cleanup.timer
+```
+
+To see what it would delete, without deleting anything:
+
+```bash
+docker compose exec -T api node server/dist/tools/cleanup-receipts.js
+```
+
+It refuses to run if the database has no bills, or if it would delete most of the photos at once. Check
+`journalctl -u splittingwisdom-cleanup` if you're not sure it ran. **At cutover, restore the database before
+copying receipts**, or stop the timer first.
+
 ## OCR speed test
 
 A temporary test for the local OCR plan (plan D18). Scans run with no network access, so

@@ -346,7 +346,7 @@ Source: `PHASE-5-ocr.md` §3 and `PLAN` notes in repo history (Checkpoint C).
 - [ ] D3.4 iOS photos: test `<input accept="image/jpeg,image/png,image/webp" capture>` on iPhone (HEIC→JPEG conversion behaviour); decide whether HEIC support is needed now that iOS PWA users exist.
 - [ ] D3.5 Review screen at route `/bill/new/scan`: image + editable extraction; low-confidence fields flagged (icon + amber outline + "please check", never colour alone) and listed in "Needs review"; item add/edit/delete/reorder; charges editable; **totals-mismatch banner** with delta and "use items sum" one-tap; group/payer/date selectors; **Confirm bill** → `POST /api/bills` with `receiptImageUrl`, defaults to equal split among selected people (existing assignment UI) → `/bill/:id`.
 - [ ] D3.6 Entry point: "New Bill" → chooser **Scan a receipt / Enter manually** (manual flow unchanged).
-- [ ] D3.7 Failure paths: extraction failed / rate-limited ⇒ same screen, empty items, image shown, "Couldn't read this receipt — add items manually". Orphan image cleanup script runs weekly on Pi (cron/systemd timer).
+- [ ] D3.7 Failure paths: extraction failed / rate-limited ⇒ same screen, empty items, image shown, "Couldn't read this receipt — add items manually". Orphan image cleanup script runs weekly on Pi (cron/systemd timer): built in `server/src/tools/cleanup-receipts.ts` and `deploy/pi/splittingwisdom-cleanup.timer`, not yet installed on the Pi.
 - [ ] D3.8 Gemini free-tier quota: handle 429 gracefully; show manual fallback.
 - [ ] Acceptance: `PHASE-5-ocr.md` "Definition of done" list.
 
