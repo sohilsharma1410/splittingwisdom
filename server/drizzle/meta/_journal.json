@@ -36,6 +36,13 @@
       "when": 1793518010571,
       "tag": "0004_idempotency_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793518310489,
+      "tag": "0005_sync_safety",
+      "breakpoints": true
     }
   ]
 }
