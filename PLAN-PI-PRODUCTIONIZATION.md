@@ -56,6 +56,7 @@
 | D14 | Pi runs the 4K-page kernel (`kernel=kernel8.img`) | 2026-11-01 | The default 16K kernel can break software built for 4K pages |
 | D15 | Pi SSH stays on password login for now | 2026-11-01 | Owner decision; leaves P1.1 open. SSH is limited to LAN + tailnet |
 | D16 | Postgres keeps the default `wal_level` | 2026-11-01 | Sync uses the outbox (spike S2.1), so `logical` from P2.1 isn't needed; less WAL means less SD wear |
+| D17 | M3 is built without `VITE_PRIMARY_URL`/`VITE_STANDBY_URL`, so failover stays off until M4 | 2026-11-01 | Until sync runs, the Pi and the standby hold different data, and a failover would send a tester to the live old app. Set both URLs and rebuild in M4 |
 | D12 | Pi ships **all** logs (success + failure) to Supabase, event-based micro-batched; **no deletion for the first ≥ 14 days**, retention module built later only if needed | 2026-11-01 | See P8; free-tier limits evaluated there |
 
 ---
@@ -169,15 +170,15 @@ File layout (new, on `dev-pi`): `deploy/pi/docker-compose.yml`, `deploy/pi/.env.
 ### P4 — Data migration: Supabase → Pi (HUMAN-run, CLAUDE-scripted)
 Scale is tiny (11 MB), so use dump/restore with a short freeze.
 
-- [ ] P4.1 **Rehearsal first** (no users affected): `pg_dump` from Supabase → restore into a scratch Postgres 17 locally/on Pi → run app against it → compare counts + run balance-invariant check (QA-4).
-- [ ] P4.2 Schema source of truth = Drizzle migrations (`server/drizzle/*`). On Pi: run `npm run db:migrate` on empty DB, then **data-only** restore, so the `__drizzle_migrations` journal stays correct.
-- [ ] P4.3 Dump command (public schema only; exclude Supabase internals):
+- [x] P4.1 **Rehearsal first** (no users affected): `pg_dump` from Supabase → restore into a scratch Postgres 17 locally/on Pi → run app against it → compare counts + run balance-invariant check (QA-4).
+- [x] P4.2 Schema source of truth = Drizzle migrations (`server/drizzle/*`). On Pi: run `npm run db:migrate` on empty DB, then **data-only** restore, so the `__drizzle_migrations` journal stays correct.
+- [x] P4.3 Dump command (public schema only; exclude Supabase internals):
   ```bash
   pg_dump "$SUPABASE_DIRECT_URL" --schema=public --data-only --no-owner --no-privileges \
           --exclude-table=public.session -Fc -f splitwisdom-data.dump
   ```
   (session table optional — users simply re-login; **include** it if you want sessions preserved for the cutover.)
-- [ ] P4.4 After restore: `SELECT setval(pg_get_serial_sequence('<table>','id'), (SELECT COALESCE(MAX(id),1) FROM <table>))` for every serial table.
+- [x] P4.4 After restore: `SELECT setval(pg_get_serial_sequence('<table>','id'), (SELECT COALESCE(MAX(id),1) FROM <table>))` for every serial table.
 - [ ] P4.5 **Cutover runbook** (≈10 min): announce → set Render to read-only → final dump → restore → verify counts/invariants → start forward sync (S2) → point Funnel URL live → smoke test (QA-1) → re-enable standby role `standby-idle`.
 - [ ] P4.6 **Rollback:** if verification fails, leave users on Vercel/Render/Supabase (untouched); nothing on the Pi is authoritative until P4.5 completes.
 - [ ] P4.7 Receipts: none are in production yet (Part 0 never completed) — if any exist, copy bucket → `RECEIPTS_DIR` (`rclone`/`supabase storage` CLI).
@@ -570,6 +571,7 @@ curl -s https://<pi>.<tailnet>.ts.net/api/health/role
 | 2026-11-01 | (this one) | **D2b/D2c** simplify-debts view, onboarding, motion pass, a11y fixes (contrast tokens, names, pre-paint theme) |
 | 2026-11-01 | (branch `dev-pi-p`) | **P3 + P2 code** `DATABASE_SSL`/`DATABASE_POOLER`, local receipts (`STORAGE_DRIVER`), `SERVE_CLIENT`, graceful shutdown, `server/src/migrate.ts`, `deploy/pi/`. `deploy/pi/smoke.sh` passed on the Pi: 62/62 plus login surviving a full restart (M1 QA-1). P2.4 stays open until a reboot is confirmed to bring the stack back |
 | 2026-11-01 | (branch `dev-pi-m2`) | **M2 tooling** `deploy/pi/copy-from-supabase.sh` (P4.1–P4.4: read-only dump of the 7 app tables, atomic restore, sequences) and `server/src/tools/verify-migration.ts` (QA-4, ignores `updated_at`/`origin`). Tested against a local old-schema stand-in; P4 stays open until it passes on the Pi against real Supabase |
+| 2026-11-01 | (branch `dev-pi-m2`) | **M2 rehearsal passed on the Pi against real Supabase** QA-4 `RESULT: OK` (users 25, groups 11, group_members 28, bills 11, bill_items 21, item_assignments 53, settlements 0), then `smoke.sh` 62/62 plus login surviving a restart. Production has no settlements, so copied settlement rows weren't exercised. Still open: P4.5 cutover runbook, P4.7 receipts check, and the merge into `dev-pi`, which waits on the intermittent failback integration test |
 
 **Still open in D2:** D2.1's `Idempotency-Key` handling and `requireWritable` are deliberately *not* wired yet — they land with workstream S (S6.1 / S3). The client already sends the key.
 
