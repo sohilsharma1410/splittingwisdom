@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly SplittingWisdom receipt photo cleanup
+
+[Timer]
+OnCalendar=Sun 04:00
+# Runs at the next boot if the Pi was off at that time.
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

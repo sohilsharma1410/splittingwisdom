@@ -112,6 +112,58 @@ Amounts are in paise, so `10000` means ₹100.00. Balances aren't stored in any 
 the app works them out when needed. Avoid `SELECT *` on `users` and `session` when
 sharing output, because they hold password hashes and login sessions.
 
+## Receipt scanning (OCR)
+
+The `ocr` container reads receipt photos on the Pi, with no outside service (plan D18). It sits
+on a Docker network with no internet, which holds only it and the API, so photos can't leave the
+Pi. It's limited to 1500 MB and 3 CPU cores, and handles one scan at a time. If it's down, scans
+fall back to manual entry and the rest of the app keeps working.
+
+The memory limit only works with `cgroup_enable=memory cgroup_memory=1` in
+`/boot/firmware/cmdline.txt`. `smoke.sh` checks this. To see whether OCR is healthy, run
+`docker compose ps ocr` and `docker compose logs ocr`. It never logs photos or their text.
+
+To see how it reads real bills, put photos in `~/ocr-test` and run `./try-receipts.sh`. That's up to
+10 photos a run, and it adds a throwaway `qa-ocr-*` user.
+
+### Abandoned scan photos
+
+Every scan stores its photo before a bill exists, so cancelled scans leave photos behind. A weekly timer
+deletes photos that no bill uses and that are over 24 hours old. To install it:
+
+```bash
+cd ~/splittingwisdom/deploy/pi
+sed "s|@DEPLOY_DIR@|$PWD|" splittingwisdom-cleanup.service | sudo tee /etc/systemd/system/splittingwisdom-cleanup.service >/dev/null
+sudo cp splittingwisdom-cleanup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now splittingwisdom-cleanup.timer
+```
+
+To see what it would delete, without deleting anything:
+
+```bash
+docker compose exec -T api node server/dist/tools/cleanup-receipts.js
+```
+
+It refuses to run if the database has no bills, or if it would delete most of the photos at once. Check
+`journalctl -u splittingwisdom-cleanup` if you're not sure it ran. **At cutover, restore the database before
+copying receipts**, or stop the timer first.
+
+## OCR speed test
+
+A temporary test for the local OCR plan (plan D18). Scans run with no network access, so
+photos can't leave the Pi.
+
+```bash
+cd ~/splittingwisdom/deploy/pi/ocr-spike
+./run.sh public    # public sample receipts, also scores accuracy
+./run.sh           # your own photos from ~/ocr-test
+```
+
+Samples already in `~/ocr-test-public` with `~/ocr-test-public-answers/answers.json` are
+reused, so you can copy them over instead of downloading. Results go to `~/ocr-test-results`.
+Keep your own photos out of the repo, because it's public.
+
 ## Day to day
 
 | To | Run |

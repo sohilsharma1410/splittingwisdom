@@ -58,6 +58,8 @@
 | D15 | Pi SSH stays on password login for now | 2026-11-01 | Owner decision; leaves P1.1 open. SSH is limited to LAN + tailnet |
 | D16 | Postgres keeps the default `wal_level` | 2026-11-01 | Sync uses the outbox (spike S2.1), so `logical` from P2.1 isn't needed; less WAL means less SD wear |
 | D17 | M3 is built without `VITE_PRIMARY_URL`/`VITE_STANDBY_URL`, so failover stays off until M4 | 2026-11-01 | Until sync runs, the Pi and the standby hold different data, and a failover would send a tester to the live old app. Set both URLs and rebuild in M4 |
+| D18 | Receipt OCR: **local on the Pi is the primary** (RapidOCR plus a parser, `dev-ocr`), and Gemini is the secondary, built by the collaborator. M4 is on hold meanwhile | 2026-11-01 | Agreed by both collaborators. Scanning people's receipts works through the same review screen either way. When Gemini is used is still open: see `docs/PI-STATUS.md` |
+| D19 | Merge order: the collaborator finishes the UI screens and merges to `main`, then `dev-ocr` merges to `main`, then both collaborators sync and decide what's next | 2026-11-01 | Pushing to `main` deploys to Render and Vercel. Details: `docs/PI-STATUS.md` |
 | D12 | Pi ships **all** logs (success + failure) to Supabase, event-based micro-batched; **no deletion for the first ≥ 14 days**, retention module built later only if needed | 2026-11-01 | See P8; free-tier limits evaluated there |
 
 ---
@@ -344,11 +346,13 @@ Source: `PHASE-5-ocr.md` §3 and `PLAN` notes in repo history (Checkpoint C).
 - [ ] D3.4 iOS photos: test `<input accept="image/jpeg,image/png,image/webp" capture>` on iPhone (HEIC→JPEG conversion behaviour); decide whether HEIC support is needed now that iOS PWA users exist.
 - [ ] D3.5 Review screen at route `/bill/new/scan`: image + editable extraction; low-confidence fields flagged (icon + amber outline + "please check", never colour alone) and listed in "Needs review"; item add/edit/delete/reorder; charges editable; **totals-mismatch banner** with delta and "use items sum" one-tap; group/payer/date selectors; **Confirm bill** → `POST /api/bills` with `receiptImageUrl`, defaults to equal split among selected people (existing assignment UI) → `/bill/:id`.
 - [ ] D3.6 Entry point: "New Bill" → chooser **Scan a receipt / Enter manually** (manual flow unchanged).
-- [ ] D3.7 Failure paths: extraction failed / rate-limited ⇒ same screen, empty items, image shown, "Couldn't read this receipt — add items manually". Orphan image cleanup script runs weekly on Pi (cron/systemd timer).
+- [ ] D3.7 Failure paths: extraction failed / rate-limited ⇒ same screen, empty items, image shown, "Couldn't read this receipt — add items manually". Orphan image cleanup script runs weekly on Pi (cron/systemd timer): built in `server/src/tools/cleanup-receipts.ts` and `deploy/pi/splittingwisdom-cleanup.timer`, not yet installed on the Pi.
 - [ ] D3.8 Gemini free-tier quota: handle 429 gracefully; show manual fallback.
 - [ ] Acceptance: `PHASE-5-ocr.md` "Definition of done" list.
 
 ### D4 — Voice commands (new)
+*Under discussion, not approved: speaking the split while a receipt is read, with speech recognition and a small model on the Pi. See `BACKLOG.md`. It would change D8. **English only, by owner decision (2026-11-01), which replaces the Hindi and Hinglish parts of this section.***
+
 **Goal:** speak naturally to add/assign items; always **confirm before saving**.
 
 **Use cases (priority order)**
@@ -544,6 +548,7 @@ curl -s https://<pi>.<tailnet>.ts.net/api/health/role
 | `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` | for sync-agent only | for storage + sync | server-only, never client |
 | `SUPABASE_ANON_KEY` | — | — | **GitHub secret** for keep-alive only |
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | yes | yes | D3.1 |
+| `OCR_PROVIDER` / `OCR_URL` | `rapidocr` / `http://ocr:8000` | unset (Gemini, or manual entry with no key) | D18 |
 | `TS_AUTHKEY` | yes (tagged, reusable) | — | |
 | `PI_PUBLIC_URL` | — | Funnel URL | controller probes |
 | `VERCEL_URL` (client build) | — | — | S7 redirect target (public) |
@@ -574,6 +579,7 @@ curl -s https://<pi>.<tailnet>.ts.net/api/health/role
 | 2026-11-01 | (branch `dev-pi-m2`) | **M2 tooling** `deploy/pi/copy-from-supabase.sh` (P4.1–P4.4: read-only dump of the 7 app tables, atomic restore, sequences) and `server/src/tools/verify-migration.ts` (QA-4, ignores `updated_at`/`origin`). Tested against a local old-schema stand-in; P4 stays open until it passes on the Pi against real Supabase |
 | 2026-11-01 | (branch `dev-pi-m2`) | **M2 rehearsal passed on the Pi against real Supabase** QA-4 `RESULT: OK` (users 25, groups 11, group_members 28, bills 11, bill_items 21, item_assignments 53, settlements 0), then `smoke.sh` 62/62 plus login surviving a restart. Production has no settlements, so copied settlement rows weren't exercised. Still open: P4.5 cutover runbook, P4.7 receipts check, and the merge into `dev-pi`, which waits on the intermittent failback integration test |
 | 2026-11-01 | (branch `dev-pi-m2`) | **M3 passed** Owner-reported: reboot brings the stack back (P2.4); the PWA installs from the public Funnel URL on Android and iPhone, stays logged in, and handles a bill and a camera receipt (P5.3, D1.6). Funnel limits documented in `deploy/pi/README.md` (P5.4, P5.5). Failover stays off until M4 (D17). See `docs/PI-STATUS.md` |
+| 2026-11-01 | (branch `dev-ocr`) | **Local OCR steps 1-3 passed on the Pi** Speed test, parser, and an isolated `ocr` container: `smoke.sh` 70/70 with a 2.2s scan. Not connected to the review screen yet, and untested on real Indian bills. Merges after the UI work (D19). See `docs/PI-STATUS.md` |
 
 **Still open in D2:** D2.1's `Idempotency-Key` handling and `requireWritable` are deliberately *not* wired yet — they land with workstream S (S6.1 / S3). The client already sends the key.
 
@@ -594,7 +600,7 @@ The Pi-side steps for these, with exact commands and who does what, are in [`doc
 Owner decision 2026-11-01: Pi data and sync are deferred while the product is still changing. Nothing below is done yet; **none of it may be skipped at cutover**. Tick items here as they're completed. Sources: `docs/PI-STATUS.md` (Pi developer), the S workstream report, and this plan.
 
 **Data and schema**
-- [ ] F1 Check Supabase's real schema version (believed to be migration 0003), **back it up**, then apply migrations 0004–0007 (they add idempotency keys, sync triggers, outbox, role state, and make constraints DEFERRABLE). Render's code needs 0004 for `POST /api/bills`, so this is also required before Render is updated.
+- [x] F1 Check Supabase's real schema version (believed to be migration 0003), **back it up**, then apply migrations 0004–0007 (they add idempotency keys, sync triggers, outbox, role state, and make constraints DEFERRABLE). Render's code needs 0004 for `POST /api/bills`, so this is also required before Render is updated. *Done 2026-11-01, as reported by the collaborator.*
 - [ ] F2 Wipe the Pi's M3 test accounts and re-run `deploy/pi/copy-from-supabase.sh` (needs Funnel off) so Pi and Supabase IDs don't collide. Re-verify with `server/src/tools/verify-migration.ts`.
 - [ ] F3 Receipts: `SELECT count(*) FROM bills WHERE receipt_image_url IS NOT NULL;` on Supabase; if any, copy them to the Pi (P4.7).
 - [ ] F4 Pi Postgres runs with `timezone='UTC'`; restores use `SET sw.sync_apply=on` or `--disable-triggers` (S report #3, #4).

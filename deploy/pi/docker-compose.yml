@@ -74,6 +74,11 @@ services:
       SERVE_CLIENT: "true"
       STORAGE_DRIVER: local
       RECEIPTS_DIR: /data/receipts
+      OCR_PROVIDER: rapidocr
+      OCR_URL: http://ocr:8000
+    networks:
+      - default
+      - ocr
     ports:
       - "127.0.0.1:4000:4000"
     volumes:
@@ -96,6 +101,40 @@ services:
     # Longer than the API's own 20 s shutdown limit.
     stop_grace_period: 30s
 
+  # Reads receipt photos (plan D18). It's only on the "ocr" network, which has no
+  # internet and holds just this and the API, so photos can't leave the Pi and it can't
+  # reach Postgres. The API doesn't wait for it: if it's down, scans fall back to manual
+  # entry and the rest of the app keeps working. Memory is about twice the peak seen on
+  # the Pi. One core stays free for the app.
+  ocr:
+    image: splittingwisdom-ocr:local
+    pull_policy: never
+    build: ocr
+    init: true
+    restart: unless-stopped
+    networks:
+      - ocr
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1500m
+    memswap_limit: 1500m
+    cpuset: "0-2"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health', timeout=4)"
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 30s
+
   # Forward sync to Supabase. Stays off until M4: start it with `--profile sync`
   # once SYNC_TARGET_DATABASE_URL is set in .env.
   sync-agent:
@@ -109,6 +148,10 @@ services:
       migrate:
         condition: service_completed_successfully
     stop_grace_period: 30s
+
+networks:
+  ocr:
+    internal: true
 
 volumes:
   pgdata:

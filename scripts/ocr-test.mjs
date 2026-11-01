@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Runs receipt photos through POST /api/bills/extract and prints what Gemini read, so we can
+// Runs receipt photos through POST /api/bills/extract and prints what was read, so we can
 // judge accuracy before building the review screen (plan D3.3).
 //
 //   OCR_EMAIL=you@example.com OCR_PASSWORD='...' node scripts/ocr-test.mjs <base-url> receipt1.jpg receipt2.jpg ...
@@ -19,7 +19,7 @@ const BASE = base.replace(/\/$/, "");
 const MIME = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp" };
 const rupees = (p) => (p == null ? "—" : `₹${(p / 100).toFixed(2)}`);
 
-const login = await fetch(`${BASE}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: OCR_EMAIL, password: OCR_PASSWORD }) });
+const login = await fetch(`${BASE}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json", "X-Forwarded-Proto": "https" }, body: JSON.stringify({ email: OCR_EMAIL, password: OCR_PASSWORD }) });
 if (!login.ok) { console.error(`Login failed (${login.status}): ${(await login.json().catch(() => ({})))?.error?.message ?? ""}`); process.exit(1); }
 const cookie = login.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
 
@@ -30,7 +30,7 @@ for (const file of files) {
   const form = new FormData();
   form.append("image", new Blob([readFileSync(file)], { type: mime }), basename(file));
   const started = Date.now();
-  const res = await fetch(`${BASE}/api/bills/extract`, { method: "POST", headers: { Cookie: cookie }, body: form });
+  const res = await fetch(`${BASE}/api/bills/extract`, { method: "POST", headers: { Cookie: cookie, "X-Forwarded-Proto": "https" }, body: form });
   const secs = ((Date.now() - started) / 1000).toFixed(1);
   const body = await res.json().catch(() => null);
   if (!res.ok) { console.log(`  HTTP ${res.status}: ${body?.error?.message ?? "error"}`); continue; }
