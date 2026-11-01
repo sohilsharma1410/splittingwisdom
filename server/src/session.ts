@@ -1,5 +1,6 @@
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
+import { databaseSslEnabled, INSECURE_TLS } from "./lib/db-config.js";
 
 const PgSession = connectPgSimple(session);
 
@@ -10,20 +11,27 @@ if (!sessionSecret) {
 
 const isProduction = process.env.NODE_ENV === "production";
 
+const sessionStore = new PgSession({
+  // connect-pg-simple builds its own `pg` Pool from this and does not
+  // parse sslmode out of a bare connection string the way some other
+  // clients do — without an explicit ssl option here, connecting to
+  // Supabase's pooler is unreliable (works sometimes, fails silently
+  // other times depending on how pg negotiates the connection).
+  conObject: {
+    connectionString: process.env.DATABASE_URL,
+    ssl: databaseSslEnabled() ? INSECURE_TLS : false,
+  },
+  tableName: "session",
+  createTableIfMissing: true,
+});
+
+/** Graceful shutdown: closes the session store's own connection pool. */
+export async function closeSessionStore(): Promise<void> {
+  await sessionStore.close();
+}
+
 export const sessionMiddleware = session({
-  store: new PgSession({
-    // connect-pg-simple builds its own `pg` Pool from this and does not
-    // parse sslmode out of a bare connection string the way some other
-    // clients do — without an explicit ssl option here, connecting to
-    // Supabase's pooler is unreliable (works sometimes, fails silently
-    // other times depending on how pg negotiates the connection).
-    conObject: {
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-    },
-    tableName: "session",
-    createTableIfMissing: true,
-  }),
+  store: sessionStore,
   secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
