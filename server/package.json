@@ -12,6 +12,7 @@
     "db:migrate": "drizzle-kit migrate",
     "sync:agent": "tsx src/sync/agent.ts",
     "sync:agent:prod": "node dist/sync/agent.js",
+    "verify:integrity": "tsx ../scripts/verify-integrity.ts",
     "test": "vitest run --config vitest.config.ts --passWithNoTests",
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },

@@ -9,6 +9,7 @@ import { readSystemState, readHeartbeat, writeHeartbeat } from "./state-store.js
 import { requireWritable } from "../middleware/require-writable.js";
 import { createHealthRouter, type SyncInfo } from "../routes/health.js";
 import { Controller, makeHttpProbe } from "../controller/controller.js";
+import { startFailbackWorker } from "../failback/worker.js";
 
 export interface RoleRuntime {
   guard: RoleGuard;
@@ -32,7 +33,7 @@ async function localSyncInfo(): Promise<SyncInfo> {
  * One call wires plan workstream S3 into the Express app (see index.ts):
  *   - GET /api/health/role
  *   - requireWritable on every mutating /api route (503 while not the active primary)
- *   - Pi: heartbeat into the standby DB
+ *   - Pi: heartbeat into the standby DB + the failback worker
  *   - Render: the failover controller (CONTROLLER_ENABLED=true)
  *
  * With APP_ROLE unset it only adds /api/health/role ("standalone") and a
@@ -72,6 +73,11 @@ export function installRoleFencing(app: Express, env: NodeJS.ProcessEnv = proces
 
   if (config.role === "primary" && authority) {
     stoppers.push(startHeartbeat(authority, config.heartbeatMs, localSyncInfo));
+    // Failback: the reverse sync must run next to the Pi's own database.
+    if (env.DATABASE_URL) {
+      const localSsl = (env.DATABASE_SSL ?? "on").trim().toLowerCase() !== "off";
+      stoppers.push(startFailbackWorker({ config, authority, localUrl: env.DATABASE_URL, localSsl }));
+    }
   }
 
   if (config.controllerEnabled) {

@@ -1,6 +1,8 @@
 import postgres from "postgres";
 
 export type Sql = postgres.Sql;
+/** Anything that runs queries: a client or a transaction. */
+export type Queryable = postgres.Sql | postgres.TransactionSql;
 
 /**
  * A postgres.js client for the sync tools. TLS "on" means encrypted without
@@ -17,6 +19,8 @@ export function makeSql(url: string, ssl: boolean, max = 2): Sql {
     connect_timeout: 15,
     idle_timeout: 60,
     max_lifetime: 60 * 30,
+    // Row images are compared as text across nodes: pin the zone so the same instant always prints the same.
+    connection: { TimeZone: "UTC" },
     onnotice: () => undefined,
   });
 }

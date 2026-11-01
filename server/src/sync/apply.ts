@@ -1,6 +1,6 @@
 import { SYNCED_TABLES, type SyncedTable } from "@splittingwisdom/shared";
 import type postgres from "postgres";
-import type { Sql } from "./client.js";
+import type { Sql, Queryable } from "./client.js";
 
 export interface OutboxEvent {
   id: number;
@@ -23,7 +23,7 @@ function assertSyncedTable(name: string): asserts name is SyncedTable {
 }
 
 /** Column names of every synced table as they exist on `db` (introspected, not assumed). */
-export async function loadColumns(db: Sql): Promise<ColumnsByTable> {
+export async function loadColumns(db: Queryable): Promise<ColumnsByTable> {
   const names = SYNCED_TABLES.map((t) => `'${t}'`).join(", "); // constant whitelist, not user input
   const rows = await db.unsafe<{ table_name: string; column_name: string }[]>(
     `SELECT table_name, column_name

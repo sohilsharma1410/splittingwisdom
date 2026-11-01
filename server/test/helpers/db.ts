@@ -19,13 +19,15 @@ export const APP_TABLES = [
 
 export function connect(url: string, max = 4) {
   assertLocalDatabaseUrl("database url", url);
-  return postgres(url, { max, onnotice: () => undefined });
+  return postgres(url, { max, onnotice: () => undefined, connection: { TimeZone: "UTC" } });
 }
 
 /** Drops everything and re-applies every migration. Local clusters only. */
 export async function resetAndMigrate(url: string): Promise<void> {
   const sql = connect(url, 1);
   try {
+    // The standby tag is a database-level setting (survives schema drops): clear it.
+    await sql.unsafe(`DO $$ BEGIN EXECUTE format('ALTER DATABASE %I RESET sw.origin', current_database()); END $$`);
     await sql.unsafe("DROP SCHEMA IF EXISTS public CASCADE");
     await sql.unsafe("DROP SCHEMA IF EXISTS drizzle CASCADE");
     await sql.unsafe("CREATE SCHEMA public");

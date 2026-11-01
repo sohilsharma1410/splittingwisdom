@@ -105,9 +105,11 @@ export async function readLag(source: Sql): Promise<OutboxLag> {
   return { pending: row.pending, lagSeconds: Math.max(0, Math.round(row.lag * 10) / 10) };
 }
 
-export async function recordSuccess(source: Sql): Promise<void> {
+/** `at` = the instant (timestamptz text) at which the outbox was known to be fully delivered; default now(). */
+export async function recordSuccess(source: Sql, at?: string): Promise<void> {
   await source`
-    UPDATE sync_status SET last_success_at = now(), last_error = NULL, updated_at = now() WHERE id = 1`;
+    UPDATE sync_status SET last_success_at = COALESCE(${at ?? null}::timestamptz, now()), last_error = NULL, updated_at = now()
+    WHERE id = 1`;
 }
 
 export async function recordFailure(source: Sql, message: string): Promise<void> {

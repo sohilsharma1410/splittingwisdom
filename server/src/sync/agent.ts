@@ -95,6 +95,11 @@ export class SyncAgent {
     return this.columns;
   }
 
+  private async clock(): Promise<string> {
+    const [row] = await this.source<{ t: string }[]>`SELECT clock_timestamp()::text AS t`;
+    return row.t;
+  }
+
   /** Ships one batch. Returns how many events were delivered (0 = idle or paused). */
   async shipBatch(): Promise<number> {
     if (this.opts.guard) {
@@ -110,6 +115,14 @@ export class SyncAgent {
     await this.opts.hooks?.afterCommit?.();
     await markSent(this.source, events.map((e) => e.id));
     return events.length;
+  }
+
+  /** drain() + stamp sync_status.last_success_at with the instant the queue was known empty (what the run loop does). */
+  async syncNow(): Promise<number> {
+    const syncPoint = await this.clock();
+    const shipped = await this.drain();
+    if (this.pausedReason === null) await recordSuccess(this.source, syncPoint);
+    return shipped;
   }
 
   /** Ships batches until nothing is left (or a guard pauses it). */
@@ -168,12 +181,18 @@ export class SyncAgent {
 
   private async run(): Promise<void> {
     let lastBeat = 0;
+    let dirty = false;
     let lastSessions = 0;
     let lastPurge = 0;
     logEvent("info", "sync_agent_started", { batchSize: this.cfg.batchSize, pollMs: this.cfg.pollMs });
 
     while (!this.stopping) {
       try {
+        // `syncPoint` is read BEFORE the fetch: everything committed before it
+        // was in the queue we looked at, so "last_success_at = syncPoint"
+        // truthfully means "all changes up to then are on the standby". Failback
+        // uses it to tell "changed after the last sync" from "just not copied yet".
+        const syncPoint = await this.clock();
         const shipped = await this.shipBatch();
         if (this.failures > 0) logEvent("info", "sync_recovered", { afterFailures: this.failures });
         this.failures = 0;
@@ -181,13 +200,13 @@ export class SyncAgent {
         const now = Date.now();
 
         if (shipped > 0) {
-          await recordSuccess(this.source);
-          lastBeat = now;
+          dirty = true;
           logEvent("debug", "sync_batch_sent", { events: shipped });
           continue; // more may be waiting; don't sleep
         }
-        if (this.pausedReason === null && now - lastBeat >= this.cfg.heartbeatMs) {
-          await recordSuccess(this.source);
+        if (this.pausedReason === null && (dirty || now - lastBeat >= this.cfg.heartbeatMs)) {
+          await recordSuccess(this.source, syncPoint); // queue was empty at syncPoint
+          dirty = false;
           lastBeat = now;
         }
         if (this.pausedReason === null && this.cfg.sessionSyncMs > 0 && now - lastSessions >= this.cfg.sessionSyncMs) {
