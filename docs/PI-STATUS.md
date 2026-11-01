@@ -8,6 +8,8 @@ The repo is public, so login names, LAN details, the tailnet name and the Funnel
 aren't recorded here. Ask the owner for them. Only the owner can reach the Pi, so any
 command that has to run there goes through them.
 
+> **Start here for what to do next:** [`docs/PI-ACTION-ITEMS.md`](PI-ACTION-ITEMS.md) lists every action item for the Pi (update to `main`, turn on receipt scanning, the fallback test, and the before-go-live list), with exact commands.
+
 ## Where things stand
 
 | Milestone | State | Evidence |
