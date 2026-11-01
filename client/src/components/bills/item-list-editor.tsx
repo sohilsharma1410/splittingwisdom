@@ -4,12 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { formatPaise, rupeesToPaise } from "@splittingwisdom/shared";
+import { unitText, withQuantity, withTotal, withUnit } from "@/lib/line-item";
 
 export interface ItemRow {
   key: string;
   name: string;
   price: string; // rupee text, e.g. "12.99"
   quantity: string; // whole number text, defaults to "1"
+  unit?: string; // rupees each, only while typed; otherwise derived (see lib/line-item.ts)
 }
 
 function safePaise(input: string): number {
@@ -41,6 +43,10 @@ export function ItemListEditor({ items, onChange, renderExtra }: ItemListEditorP
 
   function updateRow(key: string, patch: Partial<ItemRow>) {
     onChange(items.map((item) => (item.key === key ? { ...item, ...patch } : item)));
+  }
+
+  function changeRow(key: string, change: (item: ItemRow) => ItemRow) {
+    onChange(items.map((item) => (item.key === key ? change(item) : item)));
   }
 
   function removeRow(key: string) {
@@ -102,14 +108,21 @@ export function ItemListEditor({ items, onChange, renderExtra }: ItemListEditorP
             inputMode="numeric"
             placeholder="1"
             value={item.quantity}
-            onChange={(e) => updateRow(item.key, { quantity: e.target.value.replace(/[^0-9]/g, "") })}
+            onChange={(e) => changeRow(item.key, (i) => withQuantity(i, e.target.value.replace(/[^0-9]/g, "")))}
             className="w-16 text-center"
             aria-label="Quantity"
           />
           <CurrencyInput
+            placeholder="Each"
+            value={unitText(item)}
+            onChange={(e) => changeRow(item.key, (i) => withUnit(i, e.target.value))}
+            className="flex-1"
+            aria-label="Cost each"
+          />
+          <CurrencyInput
             placeholder="0.00"
             value={item.price}
-            onChange={(e) => updateRow(item.key, { price: e.target.value })}
+            onChange={(e) => changeRow(item.key, (i) => withTotal(i, e.target.value))}
             className="flex-1"
             aria-label="Item price"
           />

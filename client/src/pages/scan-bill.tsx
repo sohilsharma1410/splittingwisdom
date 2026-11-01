@@ -27,6 +27,7 @@ import {
   roundOffToMatchReceipt,
   type ReceiptDraft,
 } from "@/lib/receipt-draft";
+import { unitText, withQuantity, withTotal, withUnit } from "@/lib/line-item";
 import { cn } from "@/lib/utils";
 
 const ACCEPT = "image/jpeg,image/png,image/webp";
@@ -175,8 +176,9 @@ function ReviewForm({ photoUrl, result, lockedGroup, onStartOver }: { photoUrl: 
   }, [group.data?.group.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const edit = (patch: Partial<ReceiptDraft>) => { setDraft((d) => ({ ...d, ...patch })); setDirty(true); };
-  const editItem = (key: string, patch: Partial<ReceiptDraft["items"][number]>) =>
-    edit({ items: draft.items.map((i) => (i.key === key ? { ...i, ...patch, low: patch.low ?? false } : i)) });
+  type Row = ReceiptDraft["items"][number];
+  const editItem = (key: string, change: (item: Row) => Row) =>
+    edit({ items: draft.items.map((i) => (i.key === key ? { ...change(i), low: false } : i)) });
 
   const totals = computeTotals(draft);
   const mismatch = mismatchOf(draft);
@@ -293,18 +295,32 @@ function ReviewForm({ photoUrl, result, lockedGroup, onStartOver }: { photoUrl: 
                     Please check this line
                   </p>
                 )}
-                <div className="grid grid-cols-[minmax(0,1fr)_4.5rem] gap-2 sm:grid-cols-[minmax(0,1fr)_4.5rem_8rem_2.5rem]">
-                  <Input aria-label={`Item ${index + 1} name`} value={item.name} onChange={(e) => editItem(item.key, { name: e.target.value })} placeholder="Item name" className="col-span-1" />
-                  <Input aria-label={`Item ${index + 1} quantity`} inputMode="numeric" value={item.quantity} onChange={(e) => editItem(item.key, { quantity: e.target.value })} className="text-center" />
-                  <div className="col-span-1 sm:col-span-1"><CurrencyInput aria-label={`Item ${index + 1} price`} value={item.price} onChange={(e) => editItem(item.key, { price: e.target.value })} placeholder="0.00" /></div>
-                  <Button type="button" variant="ghost" size="icon" aria-label={`Remove item ${index + 1}`} disabled={draft.items.length === 1} onClick={() => edit({ items: draft.items.filter((i) => i.key !== item.key) })}>
-                    <Trash2 className="h-4 w-4 text-coral-ink" aria-hidden="true" />
-                  </Button>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Input aria-label={`Item ${index + 1} name`} value={item.name} onChange={(e) => editItem(item.key, (i) => ({ ...i, name: e.target.value }))} placeholder="Item name" className="min-w-0 flex-1" />
+                    <Button type="button" variant="ghost" size="icon" aria-label={`Remove item ${index + 1}`} disabled={draft.items.length === 1} onClick={() => edit({ items: draft.items.filter((i) => i.key !== item.key) })}>
+                      <Trash2 className="h-4 w-4 text-coral-ink" aria-hidden="true" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] gap-2">
+                    <div className="space-y-1">
+                      <Label htmlFor={`scan-qty-${item.key}`} className="text-xs text-muted-foreground">Qty</Label>
+                      <Input id={`scan-qty-${item.key}`} aria-label={`Item ${index + 1} quantity`} inputMode="numeric" value={item.quantity} onChange={(e) => editItem(item.key, (i) => withQuantity(i, e.target.value.replace(/[^0-9]/g, "")))} className="text-center" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`scan-unit-${item.key}`} className="text-xs text-muted-foreground">Each</Label>
+                      <CurrencyInput id={`scan-unit-${item.key}`} aria-label={`Item ${index + 1} cost each`} value={unitText(item)} onChange={(e) => editItem(item.key, (i) => withUnit(i, e.target.value))} placeholder="0.00" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`scan-price-${item.key}`} className="text-xs text-muted-foreground">Total</Label>
+                      <CurrencyInput id={`scan-price-${item.key}`} aria-label={`Item ${index + 1} price`} value={item.price} onChange={(e) => editItem(item.key, (i) => withTotal(i, e.target.value))} placeholder="0.00" />
+                    </div>
+                  </div>
                 </div>
               </li>
             ))}
           </ul>
-          <p className="text-xs text-muted-foreground">The price is the whole line as printed (for example 4 naan = ₹60 in total).</p>
+          <p className="text-xs text-muted-foreground">Total is the whole line (4 naan at ₹15 each = ₹60). Changing the quantity or the cost each updates the total.</p>
           <Button type="button" variant="outline" size="sm" onClick={() => edit({ items: [...draft.items, blankItem()] })}>
             <Plus className="h-4 w-4" aria-hidden="true" />
             Add an item
