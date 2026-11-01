@@ -15,8 +15,9 @@ command that has to run there goes through them.
 | M1 Pi base | Done | On the Pi: `smoke.sh` 62/62, and login survived a full restart. The owner confirmed the stack comes back after a reboot |
 | M2 Migration rehearsal | Done, except P4.5 and P4.7 | On the Pi against real Supabase: `copy-from-supabase.sh` ended `RESULT: OK` (table below), then `smoke.sh` 62/62 on the copy |
 | M3 Funnel and PWA | Done | Owner-reported, no logs kept: see below |
-| M4 Sync and failover | On hold (D18) | The code is on `dev-pi`, but nothing is deployed or switched on |
-| Local OCR | Step 1 in progress on `dev-ocr` | See below |
+| M4 Sync and failover | On hold (D18) | The code is on `main` and Render runs it, but sync isn't switched on |
+| Local OCR | Steps 1-3 passed on the Pi, on `dev-ocr`. Step 4 needs real bills | See below |
+| Merge to `main` | Waiting on the collaborator's UI work (D19) | See "Merge plan" |
 
 **M2 row counts, identical on the Pi and Supabase:** users 25, groups 11,
 group_members 28, bills 11, bill_items 21, item_assignments 53, settlements 0. Rows
@@ -94,18 +95,41 @@ decision on that.
 **Step 4, the accuracy test, needs real Indian bills.** `deploy/pi/try-receipts.sh` runs the photos
 in `~/ocr-test` through the real flow.
 
-**`dev-ocr` and `dev-pi` have diverged on OCR.** `dev-pi` improved the Gemini path (`42d2687`, `0245fe6`),
-including a fix for the totals check, and the owner will decide how the two fit together later. Merging
-needs these reconciled:
-- `ExtractionResult` gains `roundOffAmount` on `dev-pi`, while the parser folds round-off into tax or discount.
-- `dev-pi` ignores mismatches under 50 paise, while the parser reports any difference.
-- `scripts/ocr-test.mjs` differs slightly, because `dev-ocr` adds `X-Forwarded-Proto`.
+## Merge plan
+
+Agreed by both collaborators (D18, D19). Local OCR is the primary and Gemini is the secondary.
+
+1. The collaborator finishes the UI screens and merges to `main`.
+2. `main` merges into `dev-ocr`, and local OCR gets connected to the review screen.
+3. Gates and `deploy/pi/smoke.sh` pass, then `dev-ocr` merges to `main`. Render and Vercel deploy on every push to `main`.
+4. Both collaborators update, check they're on the same page, and decide what's next.
+
+**What the merge has to resolve,** from a trial merge of `dev-ocr` (`0a6d69c`) into `dev-pi` (`3213a6f`):
+
+- **Git conflicts:** `scripts/ocr-test.mjs`, `scripts/qa-smoke.mjs`, `server/src/routes/bills.ts`.
+- **Moved code:** `dev-pi` replaced `server/src/lib/gemini.ts` with `receipt-ocr.ts` and `ocr/providers.ts`.
+  `receipt-parser.ts` and `receipt-extract.ts` import from the old file.
+- **Two settings:** `dev-pi` has `OCR_PROVIDER` (`gemini` or `openai`) and `dev-ocr` has `OCR_DRIVER`. Local
+  should become one more provider. The parser returns finished data rather than model text, so it plugs in
+  at `extractReceipt`, not as a `VisionProvider`. `ocrInfo()` needs a local entry for the review screen.
+- **Round-off:** `dev-pi` has a signed `roundOffAmount`, shown on the review screen. The parser folds round-off
+  into tax or discount, and should fill the new field instead.
+- **Small mismatches:** `dev-pi` ignores differences under 50 paise, while the parser reports any difference.
+- **Keep:** an unknown OCR setting must never send photos to Google. Local OCR stays on its isolated network.
+
+**Decisions for after the merge:**
+
+- **When is Gemini used?** Suggested default: the Pi uses local only, and failed scans go to manual entry. Render
+  uses Gemini during an outage, because it can't run local OCR. A Pi that falls back to Gemini would send photos
+  to Google, so that should be a deliberate choice.
+- **`dev-pi` tests use a real receipt's values** (`client/src/lib/receipt-draft.test.ts`), including a real merchant
+  name. No photo or personal details were found, but the repo is public, so confirm that's fine.
 
 ## What runs where
 
 | | Pi | Render and Vercel | Supabase |
 |---|---|---|---|
-| Code | `dev-pi` | Old `main`: no settlements route | n/a |
+| Code | `dev-ocr` | `main` (`cd13037` when checked): settlements and sync code, no review screen or local OCR yet | Migrations 0004-0007 not confirmed |
 | Data | M3 test accounts only | Live app | The owner says it holds only dummy data for now |
 | Sync | Off | Off | Not receiving anything |
 
@@ -143,8 +167,8 @@ needs these reconciled:
 |---|---|---|
 | **Failback test race** | See below. Fix first in M4 | Collaborator, or M4 |
 | **Pi data before sync** | The Pi holds M3 test accounts, whose IDs would collide with Supabase's rows. Before starting sync, wipe the Pi and rerun `copy-from-supabase.sh`, which needs Funnel off | M4 |
-| **Supabase schema** | Believed to be at migration 0003, based on `main`, not confirmed. Check it, back up, then apply migrations before forward sync | M4 |
-| **Standby code** | Render and Vercel must run the same build as the Pi (S7.5) | M4 |
+| **Supabase schema** | **Check this now.** `main` is live on Render, but the collaborator's checklist (F1) still lists migrations 0004-0007 as not applied. Check the version, back up, and apply them | Owner and collaborator |
+| **Standby code** | Render and Vercel must run the same build as the Pi (S7.5). They're now on `main`, while the Pi is on `dev-ocr` | After D19 |
 | **Failover URLs** | Left out of the Pi build on purpose (D17). Set `VITE_PRIMARY_URL` and `VITE_STANDBY_URL` and rebuild once sync runs | M4 |
 | **Vercel bot check** | Scripted requests to `/api/*` through Vercel got a 429 challenge page (`x-vercel-error: hibernate-rate-limited` on `/api/health`), while Render answered directly. Check in a browser. Could also block keep-alive pings through Vercel (S1.3) | Owner to check |
 | **Receipts on Supabase (P4.7)** | Skipped because the data is dummy. Recheck at cutover: `SELECT count(*) FROM bills WHERE receipt_image_url IS NOT NULL;` | Cutover |

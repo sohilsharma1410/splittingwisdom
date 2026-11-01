@@ -58,7 +58,8 @@
 | D15 | Pi SSH stays on password login for now | 2026-11-01 | Owner decision; leaves P1.1 open. SSH is limited to LAN + tailnet |
 | D16 | Postgres keeps the default `wal_level` | 2026-11-01 | Sync uses the outbox (spike S2.1), so `logical` from P2.1 isn't needed; less WAL means less SD wear |
 | D17 | M3 is built without `VITE_PRIMARY_URL`/`VITE_STANDBY_URL`, so failover stays off until M4 | 2026-11-01 | Until sync runs, the Pi and the standby hold different data, and a failover would send a tester to the live old app. Set both URLs and rebuild in M4 |
-| D18 | Receipt OCR runs locally on the Pi (RapidOCR plus a parser), not on Gemini. M4 is on hold meanwhile | 2026-11-01 | Owner decision, for about 10-15 users. Replaces the Gemini steps in D3.2, D3.3 and D3.8 if the Pi test passes. Scanning falls back to manual entry on Render. Voice (D4) is unchanged. Test results: `docs/PI-STATUS.md` |
+| D18 | Receipt OCR: **local on the Pi is the primary** (RapidOCR plus a parser, `dev-ocr`), and Gemini is the secondary, built by the collaborator. M4 is on hold meanwhile | 2026-11-01 | Agreed by both collaborators. Scanning people's receipts works through the same review screen either way. When Gemini is used is still open: see `docs/PI-STATUS.md` |
+| D19 | Merge order: the collaborator finishes the UI screens and merges to `main`, then `dev-ocr` merges to `main`, then both collaborators sync and decide what's next | 2026-11-01 | Pushing to `main` deploys to Render and Vercel. Details: `docs/PI-STATUS.md` |
 | D12 | Pi ships **all** logs (success + failure) to Supabase, event-based micro-batched; **no deletion for the first ≥ 14 days**, retention module built later only if needed | 2026-11-01 | See P8; free-tier limits evaluated there |
 
 ---
@@ -350,6 +351,8 @@ Source: `PHASE-5-ocr.md` §3 and `PLAN` notes in repo history (Checkpoint C).
 - [ ] Acceptance: `PHASE-5-ocr.md` "Definition of done" list.
 
 ### D4 — Voice commands (new)
+*Under discussion, not approved: speaking the split while a receipt is read, with a small model on the Pi. See `BACKLOG.md`. It would change D8.*
+
 **Goal:** speak naturally to add/assign items; always **confirm before saving**.
 
 **Use cases (priority order)**
@@ -576,6 +579,7 @@ curl -s https://<pi>.<tailnet>.ts.net/api/health/role
 | 2026-11-01 | (branch `dev-pi-m2`) | **M2 tooling** `deploy/pi/copy-from-supabase.sh` (P4.1–P4.4: read-only dump of the 7 app tables, atomic restore, sequences) and `server/src/tools/verify-migration.ts` (QA-4, ignores `updated_at`/`origin`). Tested against a local old-schema stand-in; P4 stays open until it passes on the Pi against real Supabase |
 | 2026-11-01 | (branch `dev-pi-m2`) | **M2 rehearsal passed on the Pi against real Supabase** QA-4 `RESULT: OK` (users 25, groups 11, group_members 28, bills 11, bill_items 21, item_assignments 53, settlements 0), then `smoke.sh` 62/62 plus login surviving a restart. Production has no settlements, so copied settlement rows weren't exercised. Still open: P4.5 cutover runbook, P4.7 receipts check, and the merge into `dev-pi`, which waits on the intermittent failback integration test |
 | 2026-11-01 | (branch `dev-pi-m2`) | **M3 passed** Owner-reported: reboot brings the stack back (P2.4); the PWA installs from the public Funnel URL on Android and iPhone, stays logged in, and handles a bill and a camera receipt (P5.3, D1.6). Funnel limits documented in `deploy/pi/README.md` (P5.4, P5.5). Failover stays off until M4 (D17). See `docs/PI-STATUS.md` |
+| 2026-11-01 | (branch `dev-ocr`) | **Local OCR steps 1-3 passed on the Pi** Speed test, parser, and an isolated `ocr` container: `smoke.sh` 70/70 with a 2.2s scan. Not connected to the review screen yet, and untested on real Indian bills. Merges after the UI work (D19). See `docs/PI-STATUS.md` |
 
 **Still open in D2:** D2.1's `Idempotency-Key` handling and `requireWritable` are deliberately *not* wired yet — they land with workstream S (S6.1 / S3). The client already sends the key.
 

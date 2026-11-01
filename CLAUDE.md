@@ -13,7 +13,7 @@ A bill-splitting web app (later wrapped to Android APK via Capacitor) for a real
 - DB: PostgreSQL on Supabase free tier, accessed via Drizzle ORM from the Express server
 - Auth: session-based (express-session + connect-pg-simple, cookie sessions), passwords hashed with bcrypt. Do NOT use Supabase Auth — we use Supabase only as a Postgres host + storage bucket.
 - File storage: Supabase Storage bucket for receipt images (server-side upload via service key; never expose service key to client)
-- OCR (Phase 3 only): Google Gemini API free tier, called from the Express server
+- OCR: local on the Pi is the primary (RapidOCR in the `ocr` container, then `server/src/lib/receipt-parser.ts`). Google Gemini API free tier is the secondary, called from the Express server
 - Monorepo layout: `/client`, `/server`, `/shared` (Drizzle schema + Zod schemas live in `/shared`, imported by both sides)
 
 ## Money rules (non-negotiable)
