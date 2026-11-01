@@ -3,6 +3,7 @@ import {
   integer,
   bigint,
   bigserial,
+  doublePrecision,
   text,
   jsonb,
   timestamp,
@@ -123,6 +124,34 @@ export const syncOutbox = pgTable(
     index("sync_outbox_sent_at_idx").on(table.sentAt).where(sql`${table.sentAt} IS NOT NULL`),
   ],
 );
+
+export const ACTIVE_PRIMARIES = ["pi", "standby", "cutover"] as const;
+export type ActivePrimary = (typeof ACTIVE_PRIMARIES)[number];
+
+/**
+ * Who may write right now (plan S3.1). One row, authoritative in the
+ * always-reachable standby database (Supabase). `cutover` = failback in
+ * progress: nobody writes. `epoch` increases on every transition and is the
+ * fencing token.
+ */
+export const systemState = pgTable("system_state", {
+  id: integer("id").primaryKey().default(1),
+  activePrimary: text("active_primary", { enum: ACTIVE_PRIMARIES }).notNull().default("pi"),
+  epoch: integer("epoch").notNull().default(1),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Liveness written by the Pi's API process into the standby DB every ~15 s
+ * (plan S3.5), carrying its sync position so the standby can report it.
+ * Failover requires BOTH this to go stale AND the HTTP probe to fail.
+ */
+export const nodeHeartbeat = pgTable("node_heartbeat", {
+  node: text("node", { enum: NODE_ORIGINS }).primaryKey(),
+  beatAt: timestamp("beat_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+  lagSeconds: doublePrecision("lag_seconds"),
+});
 
 /** Single-row heartbeat the sync agent writes; read by GET /api/health/role. */
 export const syncStatus = pgTable("sync_status", {

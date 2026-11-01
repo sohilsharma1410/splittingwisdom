@@ -9,6 +9,7 @@ import groupsRouter from "./routes/groups.js";
 import billsRouter from "./routes/bills.js";
 import balancesRouter from "./routes/balances.js";
 import usersRouter from "./routes/users.js";
+import { installRoleFencing } from "./roles/install.js";
 
 export const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -49,6 +50,10 @@ app.get("/api/health/db", async (_req, res) => {
     res.status(503).json({ error: { message: "Database unreachable." } });
   }
 });
+
+// Roles & fencing (plan S3): GET /api/health/role, 503 on mutating /api routes
+// while this node isn't the active primary. No-op unless APP_ROLE is set.
+installRoleFencing(app);
 
 app.use("/api/auth", authRouter);
 app.use("/api/groups", groupsRouter);
