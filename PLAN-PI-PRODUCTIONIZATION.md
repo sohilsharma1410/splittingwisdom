@@ -589,7 +589,7 @@ curl -s https://<pi>.<tailnet>.ts.net/api/health/role
 
 ## Appendix F — Must be done BEFORE going live on the Pi (tracked list)
 
-The Pi-side steps for these, with exact commands and who does what, are in [`docs/PI-ACTION-ITEMS.md`](docs/PI-ACTION-ITEMS.md).
+The Pi-side steps for these, with exact commands and who does what, are in [`docs/PI-STATUS.md`](docs/PI-STATUS.md#action-items-for-the-pi-start-here).
 
 Owner decision 2026-11-01: Pi data and sync are deferred while the product is still changing. Nothing below is done yet; **none of it may be skipped at cutover**. Tick items here as they're completed. Sources: `docs/PI-STATUS.md` (Pi developer), the S workstream report, and this plan.
 
