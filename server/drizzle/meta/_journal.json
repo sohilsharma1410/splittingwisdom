@@ -43,6 +43,13 @@
       "when": 1793518310489,
       "tag": "0005_sync_safety",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793519656327,
+      "tag": "0006_sync_outbox",
+      "breakpoints": true
     }
   ]
 }

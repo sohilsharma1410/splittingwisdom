@@ -94,6 +94,45 @@ export const deletionLog = pgTable(
   ],
 );
 
+export const OUTBOX_OPS = ["upsert", "delete"] as const;
+
+/**
+ * Durable change feed (plan S2.2), appended to by AFTER row triggers on every
+ * synced table. `payload` is the full row image (to_jsonb(NEW)) at that
+ * moment, so replaying events in id order reproduces history and is
+ * FK-safe by construction. Shipped rows get `sent_at`; the agent picks
+ * `sent_at IS NULL` rather than a cursor because ids are assigned at trigger
+ * time but become visible at commit time (a lower id can commit later).
+ */
+export const syncOutbox = pgTable(
+  "sync_outbox",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    tableName: text("table_name").notNull(),
+    pk: bigint("pk", { mode: "number" }).notNull(),
+    op: text("op", { enum: OUTBOX_OPS }).notNull(),
+    // Top-level transaction id: the agent only ships whole transactions
+    // (a closed prefix), so a batch never contains half of a cascade.
+    xid: bigint("xid", { mode: "number" }).notNull().default(sql`txid_current()`),
+    payload: jsonb("payload"),
+    at: timestamp("at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("sync_outbox_unsent_idx").on(table.id).where(sql`${table.sentAt} IS NULL`),
+    index("sync_outbox_sent_at_idx").on(table.sentAt).where(sql`${table.sentAt} IS NOT NULL`),
+  ],
+);
+
+/** Single-row heartbeat the sync agent writes; read by GET /api/health/role. */
+export const syncStatus = pgTable("sync_status", {
+  id: integer("id").primaryKey().default(1),
+  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /**
  * Rows changed on both sides since the last sync. Resolved last-writer-wins
  * by updated_at; the loser is kept here, in full, for owner review.

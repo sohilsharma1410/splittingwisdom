@@ -44,4 +44,14 @@ export async function truncateAll(sql: postgres.Sql): Promise<void> {
   if (rows.length === 0) return;
   const list = rows.map((r) => `"public"."${r.tablename}"`).join(", ");
   await sql.unsafe(`TRUNCATE ${list} RESTART IDENTITY CASCADE`);
+  // Re-seed the singleton rows the migrations insert.
+  await sql.unsafe(`
+    DO $$ BEGIN
+      IF to_regclass('public.sync_status') IS NOT NULL THEN
+        INSERT INTO sync_status (id) VALUES (1) ON CONFLICT DO NOTHING;
+      END IF;
+      IF to_regclass('public.system_state') IS NOT NULL THEN
+        INSERT INTO system_state (id, active_primary, epoch) VALUES (1, 'pi', 1) ON CONFLICT DO NOTHING;
+      END IF;
+    END $$`);
 }
