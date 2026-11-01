@@ -58,6 +58,7 @@
 | D15 | Pi SSH stays on password login for now | 2026-11-01 | Owner decision; leaves P1.1 open. SSH is limited to LAN + tailnet |
 | D16 | Postgres keeps the default `wal_level` | 2026-11-01 | Sync uses the outbox (spike S2.1), so `logical` from P2.1 isn't needed; less WAL means less SD wear |
 | D17 | M3 is built without `VITE_PRIMARY_URL`/`VITE_STANDBY_URL`, so failover stays off until M4 | 2026-11-01 | Until sync runs, the Pi and the standby hold different data, and a failover would send a tester to the live old app. Set both URLs and rebuild in M4 |
+| D18 | Receipt OCR runs locally on the Pi (RapidOCR plus a parser), not on Gemini. M4 is on hold meanwhile | 2026-11-01 | Owner decision, for about 10-15 users. Replaces the Gemini steps in D3.2, D3.3 and D3.8 if the Pi test passes. Scanning falls back to manual entry on Render. Voice (D4) is unchanged. Test results: `docs/PI-STATUS.md` |
 | D12 | Pi ships **all** logs (success + failure) to Supabase, event-based micro-batched; **no deletion for the first ≥ 14 days**, retention module built later only if needed | 2026-11-01 | See P8; free-tier limits evaluated there |
 
 ---

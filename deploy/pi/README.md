@@ -112,6 +112,19 @@ Amounts are in paise, so `10000` means ₹100.00. Balances aren't stored in any 
 the app works them out when needed. Avoid `SELECT *` on `users` and `session` when
 sharing output, because they hold password hashes and login sessions.
 
+## OCR speed test
+
+A temporary test for the local OCR plan (plan D18). Scans run with no network access, so
+photos can't leave the Pi.
+
+```bash
+cd ~/splittingwisdom/deploy/pi/ocr-spike
+./run.sh public    # public sample receipts, also scores accuracy
+./run.sh           # your own photos from ~/ocr-test
+```
+
+Results go to `~/ocr-test-results`. Keep your own photos out of the repo, because it's public.
+
 ## Day to day
 
 | To | Run |

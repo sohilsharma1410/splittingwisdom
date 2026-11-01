@@ -15,7 +15,8 @@ command that has to run there goes through them.
 | M1 Pi base | Done | On the Pi: `smoke.sh` 62/62, and login survived a full restart. The owner confirmed the stack comes back after a reboot |
 | M2 Migration rehearsal | Done, except P4.5 and P4.7 | On the Pi against real Supabase: `copy-from-supabase.sh` ended `RESULT: OK` (table below), then `smoke.sh` 62/62 on the copy |
 | M3 Funnel and PWA | Done | Owner-reported, no logs kept: see below |
-| M4 Sync and failover | Not started | The code is on `dev-pi`, but nothing is deployed or switched on |
+| M4 Sync and failover | On hold (D18) | The code is on `dev-pi`, but nothing is deployed or switched on |
+| Local OCR | Step 1 in progress on `dev-ocr` | See below |
 
 **M2 row counts, identical on the Pi and Supabase:** users 25, groups 11,
 group_members 28, bills 11, bill_items 21, item_assignments 53, settlements 0. Rows
@@ -26,6 +27,31 @@ comparison, because the restore sets them on the Pi.
 stayed logged in after closing the app, created a group and a bill with the right
 balance, and took a receipt photo with the camera and opened it again. Automatic
 receipt scanning wasn't part of the test.
+
+## Local OCR
+
+The owner chose to run receipt OCR on the Pi instead of Gemini (D18). The plan is RapidOCR
+plus a parser, because vision models can invent prices. Scanning falls back to manual
+entry on Render.
+
+**Step 1, the speed test, is in `deploy/pi/ocr-spike/`.** So far it has only run on an
+x86 computer, using a stand-in for Docker, so the Dockerfile is untested and there are no
+Pi timings yet.
+
+| 120 public samples, x86 | Prices found | Totals found | Item names exact | Typical time |
+|---|---|---|---|---|
+| Tiny model, real photos (CORD-v2) | 224/246 | 86/95 | 185/246 | 1.0s across both sets |
+| Small model, real photos (CORD-v2) | 233/246 | 91/95 | 210/246 | 2.8s across both sets |
+| Tiny model, synthetic Indian invoices | 165/167 | 20/20 | 113/167 | |
+| Small model, synthetic Indian invoices | 161/167 | 20/20 | 140/167 | |
+
+These numbers are a best case for prices and totals: a value counts if it appears anywhere
+on the page, not only on the right row. The samples aren't Indian restaurant bills: CORD-v2
+is Indonesian, and the Indian set is synthetic wholesale invoices. Real Indian bills are
+still needed before the accuracy test in step 4.
+
+Rows from tilted photos come back out of order, so the parser has to use the text's
+position on the page. Receipt photos must never be committed, because the repo is public.
 
 ## What runs where
 
