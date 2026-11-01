@@ -13,6 +13,7 @@
 | The one-page picture | §1 TL;DR, §3 Architecture |
 | What must be done on the Pi | §4 Workstream **P** |
 | How the backup/standby + sync works | §5 Workstream **S** |
+| Who is working on what right now | §6 "Current work" |
 | Remaining product features (settlements, OCR, voice, PWA) | §6 Workstream **D** |
 | How we prove it works | §7 QA |
 | What can go wrong | §8 Risks |
@@ -49,7 +50,7 @@
 | D5 | Vercel must **not** reach the private network | 2026-11-01 | Vercel stays static + proxy to Render only |
 | D6 | Standby accepts **writes**; sync back on recovery | 2026-11-01 | Needs schema changes (S5) |
 | D7 | No new hardware (no UPS / SSD) | 2026-11-01 | Accepts residual risk R1 |
-| D8 | Voice = browser speech-to-text + Gemini parse, confirm-before-save | 2026-11-01 | Fallback: record audio → Gemini (see D4/V-arch) |
+| D8 | Voice = browser speech-to-text + Gemini parse, confirm-before-save | 2026-11-01 | Fallback: record audio → Gemini (see D4/V-arch). **Replaced by D21**, except confirm-before-save, which stays |
 | D9 | PWA replaces Capacitor APK (Phase 6 §3 dropped) | 2026-11-01 | Assumption — owner may veto |
 | D10 | Roadmap order after infra: settlements → OCR → voice | 2026-11-01 | Assumption — owner may veto |
 | D11 | Continuous **one-way** copy Pi → Supabase is kept as the backup (Supabase never accepts writes in normal operation; Pi stays sole source of truth) | 2026-11-01 | Owner confirmed: data not highly confidential at this stage |
@@ -60,6 +61,8 @@
 | D17 | M3 is built without `VITE_PRIMARY_URL`/`VITE_STANDBY_URL`, so failover stays off until M4 | 2026-11-01 | Until sync runs, the Pi and the standby hold different data, and a failover would send a tester to the live old app. Set both URLs and rebuild in M4 |
 | D18 | Receipt OCR: **local on the Pi is the primary** (RapidOCR plus a parser, `dev-ocr`), and Gemini is the secondary, built by the collaborator. M4 is on hold meanwhile | 2026-11-01 | Agreed by both collaborators. Scanning people's receipts works through the same review screen either way. When Gemini is used is still open: see `docs/PI-STATUS.md` |
 | D19 | Merge order: the collaborator finishes the UI screens and merges to `main`, then `dev-ocr` merges to `main`, then both collaborators sync and decide what's next | 2026-11-01 | Pushing to `main` deploys to Render and Vercel. Details: `docs/PI-STATUS.md` |
+| D20 | Work splits in two from `main` at the commit that adds this row: Sohil fixes scan bugs on `dev-bugfixes`, and the owner's session builds speech-to-text on `dev-speech` | 2026-11-01 | See §6 "Current work". M4 stays on hold |
+| D21 | Speech-to-text is approved to build. **English only.** Target: recognition runs on the Pi, with no Google or Apple, if the D4.9 test passes | 2026-11-01 | Replaces D8 and the Hindi/Hinglish parts of D4. If D4.9 fails, the owner decides the next step |
 | D12 | Pi ships **all** logs (success + failure) to Supabase, event-based micro-batched; **no deletion for the first ≥ 14 days**, retention module built later only if needed | 2026-11-01 | See P8; free-tier limits evaluated there |
 
 ---
@@ -311,6 +314,20 @@ New migration(s) (CLAUDE; reviewed by owner before running on any real DB):
 
 > Order (D10): **D0 → D1 → D2 → D3 → D4 → D5.** D1 can start in parallel with P-work since it only needs the repo.
 
+### Current work (D20)
+
+| Who | Branch, from `main` | Work | Tasks |
+|---|---|---|---|
+| Sohil, with their agent | `dev-bugfixes` | The three scan bugs below, plus any further bugs found | D3.9–D3.11 |
+| Owner, with their session | `dev-speech` | Speech-to-text | D4.9–D4.12 |
+
+**Staying out of each other's way:**
+- `dev-bugfixes` owns `client/src/pages/scan-bill.tsx` item rows, `client/src/components/bills/item-list-editor.tsx` and `client/src/lib/receipt-draft.ts`.
+- `dev-speech` adds its own files, a new container in `deploy/pi/docker-compose.yml`, and one small mount point on the review screen. It expects no database migration.
+- Whoever merges second first merges `main` into their branch and reruns the gates: `npm run check`, all tests, `npm run build`, `scripts/qa-smoke.mjs`.
+- Pushing to `main` deploys Render and Vercel, so merge only when the gates pass.
+- Say so before adding a migration, because the numbering is shared. `0008` is the next free number.
+
 ### D0 — Hygiene (before anything else)
 - [x] D0.1 `npm audit fix` for prod deps (`proxy-addr`, `body-parser`, `multer`, `zod`, `qs`); rerun checks/tests/build.
 - [x] D0.2 Login/register IP rate-limit + `helmet` (P7.2).
@@ -350,8 +367,25 @@ Source: `PHASE-5-ocr.md` §3 and `PLAN` notes in repo history (Checkpoint C).
 - [ ] D3.8 Gemini free-tier quota: handle 429 gracefully; show manual fallback.
 - [ ] Acceptance: `PHASE-5-ocr.md` "Definition of done" list.
 
+**Bugs found by the owner testing the scan flow in the app (2026-11-01). Sohil, on `dev-bugfixes` (D20):**
+
+- [ ] D3.9 **A photo taken with the in-app camera fails OCR.** The same bill photographed with the phone's normal camera and then uploaded works. Cause unknown. Both buttons use the same `onPick` (`client/src/pages/scan-bill.tsx:48`) and the same `downscaleImage`, so compare the two files that reach the server. First get the phone, the browser, whether the app was installed, which server it used, the on-screen error, and `docker compose logs api | grep -i "local ocr"` on the Pi. Never commit the photos.
+- [ ] D3.10 **Changing a quantity after OCR doesn't update the totals.** Neither the bill total nor the check against the total the OCR detected changes. `computeTotals` in `client/src/lib/receipt-draft.ts` sums `price` and never reads `quantity`. Fix this together with D3.11, because a quantity change needs a unit cost to work from.
+- [ ] D3.11 **Each row needs separate unit cost and total fields.** Today a row has only a quantity and one price.
+
+**Money rules for D3.10 and D3.11:**
+- `bill_items.price` is the **line total**. Balances use it directly and never multiply by quantity, so don't change what it means.
+- Compute in integer paise. A unit cost isn't always exact (₹100 for 3), so showing a row must never rewrite its line total. Recalculate only when someone edits the quantity or unit cost.
+- The database has no unit cost column. Deriving it from the line total and quantity needs no migration. Storing it would need migration `0008` and a check against the sync rules (S5), so raise that with the owner first.
+- `ItemListEditor` is also used by the manual bill form, and `scan-bill.tsx` has its own review rows. Check both, so the two screens don't behave differently.
+
 ### D4 — Voice commands (new)
-*Under discussion, not approved: speaking the split while a receipt is read, with speech recognition and a small model on the Pi. See `BACKLOG.md`. It would change D8. **English only, by owner decision (2026-11-01), which replaces the Hindi and Hinglish parts of this section.***
+**Approved to build (D21): speech-to-text, English only.** D4.9–D4.12 are the current work and replace the architecture below where they differ. The Hindi and Hinglish parts of this section no longer apply. V1–V5 and D4.1–D4.8 are the older Gemini design, kept for reference; V2–V5 aren't being built now.
+
+- [ ] D4.9 **Speed and accuracy test on the Pi, before any app code.** Try Whisper `tiny.en` and `base.en` on real phone recordings of people saying who had what, with real names and dish names. Measure time, memory, and whether names and dishes survive, including while an OCR scan is running. The app must stay responsive. The owner approves the result before D4.10 starts.
+- [ ] D4.10 **Isolated `stt` container**, built like `ocr` (D18): no internet, no route to Postgres, no host port, memory and CPU limits, models fetched and warmed up at build time. `POST /api/speech/transcribe`: auth, rate limit, size and length limits. Audio is deleted straight after reading. Audio and transcripts are never logged (P8.3).
+- [ ] D4.11 **Mic on the scan review screen:** record on the phone (MediaRecorder), then show an editable transcript. Handles a denied or unsupported microphone, recognition failing, and speech being unavailable on the standby, because Render can't run this. The bill can always be finished by hand.
+- [ ] D4.12 **Transcript to pre-filled split.** Start from `server/src/lib/speech-split.ts`, and remove its Hindi rules and sentences. It may link items to member IDs and share counts, **never amounts**. Anything unclear stays unassigned, and nothing saves without Confirm. Add a small language model only if real speech shows the rules fall short; that's a separate owner decision.
 
 **Goal:** speak naturally to add/assign items; always **confirm before saving**.
 
@@ -389,7 +423,7 @@ Mic → SpeechRecognition (browser)  ──text──┐
 - [ ] D5.1 Soft-remove group member (see `BACKLOG.md`).
 - [ ] D5.2 Email-based password reset (needs provider decision).
 - [ ] D5.3 Push notifications (explicitly out of scope today).
-- [ ] D5.4 Local on-device speech (Whisper on Pi) if cloud STT proves unreliable.
+- D5.4 Moved to D4.9–D4.11: speech recognition on the Pi is now the target (D21).
 
 ---
 
@@ -500,7 +534,7 @@ Dependencies: M1→M2→M3; S-work (M4) needs M2; M6 needs M3+M4+M5; M7–M9 can
 | Q5 | Re-login on failover acceptable, or build S8 handoff? | Accept re-login first |
 | Q6 | Replace Capacitor APK with PWA (D9)? | Yes |
 | Q7 | Roadmap order settlements → OCR → voice (D10)? | Yes |
-| Q8 | Voice languages: English + Hindi/Hinglish only? | Yes |
+| Q8 | Voice languages | **Answered: English only** (D21) |
 | Q9 | Should voice also cover V5 (balance questions)? | Optional, last |
 | Q10 | Email provider for password reset (Resend / Gmail SMTP)? | Deferred; owner-run reset script |
 | Q11 | Allow Playwright + vite-plugin-pwa as new deps? | Yes (named in this plan) |

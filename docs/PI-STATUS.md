@@ -8,6 +8,12 @@ The repo is public, so login names, LAN details, the tailnet name and the Funnel
 aren't recorded here. Ask the owner for them. Only the owner can reach the Pi, so any
 command that has to run there goes through them.
 
+## Current work
+
+Sohil fixes scan bugs on `dev-bugfixes`, and the owner's session builds speech-to-text on `dev-speech` (D20, D21). The bug
+details, the money rules for them and how the two branches avoid clashing are in `PLAN-PI-PRODUCTIONIZATION.md` §6
+"Current work" and D3.9-D3.11. M4 stays on hold.
+
 ## Action items for the Pi (start here)
 
 Everything the Pi developer and the owner need to do next, in order, against `main` (2026-11-01).
@@ -270,7 +276,7 @@ Agreed by both collaborators (D18, D19). Local OCR is the primary and Gemini is 
 
 1. Done: the collaborator merged the UI screens to `main`.
 2. Done: `main` merged into `dev-ocr`, and `dev-ocr` merged to `main`. Render and Vercel deploy on every push to `main`.
-3. Next: both collaborators update, check they're on the same page, and decide what's next.
+3. Done: the next work is decided, see "Current work" at the top.
 
 **Done:** both sides are on `main`. Before merging, gates passed and `qa-smoke` passed 73/73 through the real OCR service on x86. Still to do: run the merged code on the Pi, and try the scan screen in a browser with local OCR.
 
@@ -293,10 +299,11 @@ Agreed by both collaborators (D18, D19). Local OCR is the primary and Gemini is 
 - **`dev-pi` tests use a real receipt's values** (`client/src/lib/receipt-draft.test.ts`), including a real merchant name. No
   photo or personal details were found, but the repo is public, so confirm that's fine.
 
-## Speaking the split (idea, not connected to the app)
+## Speaking the split (approved to build, not connected to the app yet)
 
-See `BACKLOG.md`. The owner agreed the direction: test plain matching first, and speech may go to Google or Apple if the app
-says so. `server/src/lib/speech-split.ts` only links item numbers to member ids and share counts, and never sees an amount.
+The plan is D21 and D4.9-D4.12: English only, with speech recognition on the Pi if the test passes, so this replaces the
+earlier idea of sending speech to Google or Apple. `server/src/lib/speech-split.ts` only links item numbers to member ids and
+share counts, and never sees an amount. These results predate the English-only decision.
 
 | Plain rules, no model | Exact | Left blank | Wrong guess |
 |---|---|---|---|

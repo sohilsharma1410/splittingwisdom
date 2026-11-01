@@ -4,7 +4,9 @@ Ideas and requests that came up mid-phase but are out of scope for the current
 phase. Nothing here gets built until a human explicitly moves it into a phase
 file.
 
-## Speak the split while a receipt is read (idea, not approved)
+## Speak the split while a receipt is read (moved to the plan)
+
+Approved to build on 2026-11-01: see D21 and D4.9-D4.12 in `PLAN-PI-PRODUCTIONIZATION.md`. The notes below are the background.
 
 After taking the photo, the person says who had what ("Priya and I shared the biryani, Karan had the
 naan"). The speech text, the OCR items and the group's members are matched into a pre-filled split on
