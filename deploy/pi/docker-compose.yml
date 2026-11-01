@@ -1,0 +1,115 @@
+# The Pi stack (plan P2). Setup and day-to-day commands: deploy/pi/README.md.
+#
+# Tailscale runs on the host, not in here. Docker-published ports bypass ufw, so
+# the API is bound to localhost only (Funnel reaches it there) and Postgres isn't
+# published at all.
+name: splittingwisdom
+
+x-app: &app
+  image: splittingwisdom-api:local
+  pull_policy: never
+  init: true
+  env_file: .env
+  environment: &app-env
+    NODE_ENV: production
+    DATABASE_URL: postgres://splittingwisdom:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/pi/.env}@postgres:5432/splittingwisdom
+    DATABASE_SSL: "off"
+    DATABASE_POOLER: "false"
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: splittingwisdom
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/pi/.env}
+      POSTGRES_DB: splittingwisdom
+    # Durability settings are spelled out so nobody trades them for speed (plan P6.1).
+    command:
+      - postgres
+      - -c
+      - fsync=on
+      - -c
+      - synchronous_commit=on
+      - -c
+      - full_page_writes=on
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - max_connections=50
+      - -c
+      - max_wal_size=512MB
+    shm_size: 256mb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U splittingwisdom -d splittingwisdom"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    stop_grace_period: 60s
+
+  # Applies pending migrations, then exits. Safe on every start.
+  migrate:
+    <<: *app
+    command: ["node", "server/dist/migrate.js"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    build:
+      context: ../..
+      dockerfile: deploy/pi/Dockerfile.api
+      args:
+        VITE_PRIMARY_URL: ${VITE_PRIMARY_URL:-}
+        VITE_STANDBY_URL: ${VITE_STANDBY_URL:-}
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      PORT: "4000"
+      SERVE_CLIENT: "true"
+      STORAGE_DRIVER: local
+      RECEIPTS_DIR: /data/receipts
+    ports:
+      - "127.0.0.1:4000:4000"
+    volumes:
+      - receipts:/data/receipts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/api/health/db').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 30s
+    # Longer than the API's own 20 s shutdown limit.
+    stop_grace_period: 30s
+
+  # Forward sync to Supabase. Stays off until M4: start it with `--profile sync`
+  # once SYNC_TARGET_DATABASE_URL is set in .env.
+  sync-agent:
+    <<: *app
+    profiles: ["sync"]
+    command: ["node", "server/dist/sync/agent.js"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    stop_grace_period: 30s
+
+volumes:
+  pgdata:
+  receipts:

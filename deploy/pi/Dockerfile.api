@@ -1,0 +1,41 @@
+# The Pi's single image: Express API + the built web app (plan P2.2).
+# Build context is the repo root; docker-compose.yml sets this up.
+# Dockerfile.api.dockerignore limits what's copied in.
+
+FROM node:22-slim AS build
+WORKDIR /app
+# Manifests first, so a code-only change doesn't reinstall every package.
+COPY package.json package-lock.json ./
+COPY scripts/link-drizzle-orm.mjs scripts/
+COPY shared/package.json shared/
+COPY server/package.json server/
+COPY client/package.json client/
+RUN npm ci
+COPY shared shared
+COPY server server
+COPY client client
+# Failover URLs are baked into the client (plan S7). Empty means failover is off.
+ARG VITE_PRIMARY_URL=""
+ARG VITE_STANDBY_URL=""
+RUN npm run build
+
+FROM node:22-slim AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY scripts/link-drizzle-orm.mjs scripts/
+COPY shared/package.json shared/
+COPY server/package.json server/
+COPY client/package.json client/
+# Only what the server needs at runtime: no dev tools and no client packages.
+RUN npm ci --omit=dev --workspace=server --workspace=shared
+COPY --from=build /app/shared/dist shared/dist
+COPY --from=build /app/server/dist server/dist
+COPY --from=build /app/server/drizzle server/drizzle
+COPY --from=build /app/client/dist client/dist
+# Created here so the named volume mounted over it starts out owned by `node`.
+RUN mkdir -p /data/receipts && chown -R node:node /data
+USER node
+EXPOSE 4000
+# Run node directly, not through npm, so it receives SIGTERM from `docker stop`.
+CMD ["node", "server/dist/index.js"]

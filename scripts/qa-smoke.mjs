@@ -30,6 +30,9 @@ class Client {
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
         ...(this.cookie ? { Cookie: this.cookie } : {}),
         "X-Forwarded-For": FAKE_IP,
+        // Production only sets its Secure session cookie on HTTPS. This says what a
+        // TLS proxy would, so the test also works against http://127.0.0.1 on the Pi.
+        "X-Forwarded-Proto": "https",
         ...extraHeaders,
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -124,6 +127,47 @@ async function main() {
   r = await A.req("GET", `/api/settlements?groupId=${groupId}`);
   if (r.status === 200) await settlementChecks({ A, B, C, groupId, aId, bId, mA, mB });
   else console.log("SKIP  settlements (route not present on this build)");
+
+  // --- web app served by this API (the Pi): EXPECT_SERVED_CLIENT=1 -----------
+  if (process.env.EXPECT_SERVED_CLIENT) {
+    const get = async (path) => {
+      const res = await fetch(`${BASE}${path}`);
+      return { status: res.status, type: res.headers.get("content-type") ?? "", text: await res.text() };
+    };
+    let page = await get("/");
+    check("app served at /", page.status === 200 && page.type.includes("html") && page.text.includes("<html"), `status ${page.status}`);
+    page = await get("/bill/1");
+    check("deep link loads the app", page.status === 200 && page.type.includes("html"), `status ${page.status}`);
+    page = await get("/sw.js");
+    check("service worker served as a script", page.status === 200 && page.type.includes("javascript"), `${page.status} ${page.type}`);
+    page = await get("/manifest.webmanifest");
+    check("PWA manifest served", page.status === 200, `status ${page.status}`);
+    page = await get("/assets/does-not-exist.js");
+    check("missing asset is a 404, not the app", page.status === 404 && !page.text.includes("<html"), `status ${page.status}`);
+    page = await get("/api/does-not-exist");
+    check("unknown API route stays a JSON 404", page.status === 404 && page.type.includes("json"), `${page.status} ${page.type}`);
+  }
+
+  // --- receipts on local disk (the Pi): EXPECT_LOCAL_RECEIPTS=1 --------------
+  if (process.env.EXPECT_LOCAL_RECEIPTS) {
+    const bytes = Buffer.from(`qa-smoke-receipt-${RUN}`);
+    const headers = { Cookie: A.cookie, "X-Forwarded-For": FAKE_IP, "X-Forwarded-Proto": "https" };
+    const form = new FormData();
+    form.append("image", new Blob([bytes], { type: "image/png" }), "receipt.png");
+    const upload = await fetch(`${BASE}/api/bills/${billId}/receipt`, { method: "POST", headers, body: form });
+    check("receipt upload writes to disk -> 201", upload.status === 201, `status ${upload.status}: ${await upload.clone().text()}`);
+
+    r = await A.req("GET", `/api/bills/${billId}/receipt-url`);
+    const url = r.body?.data?.url ?? "";
+    check("receipt URL is on this server", url.startsWith("/api/receipts/"), JSON.stringify(r));
+    const image = await fetch(`${BASE}${url}`, { headers });
+    const served = Buffer.from(await image.arrayBuffer());
+    check("receipt reads back unchanged", image.status === 200 && served.equals(bytes), `status ${image.status}`);
+    const anonymous = await fetch(`${BASE}${url}`);
+    check("receipt URL needs a login -> 401", anonymous.status === 401, `status ${anonymous.status}`);
+    r = await C.req("GET", `/api/bills/${billId}/receipt-url`);
+    check("outsider gets no receipt URL -> 404", r.status === 404, `status ${r.status}`);
+  }
 
   // --- hardening -------------------------------------------------------------
   const hdr = await fetch(`${BASE}/api/health`);
