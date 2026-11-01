@@ -19,4 +19,11 @@ describe("computeTotalsMismatch — price is the line total", () => {
   it("can't judge without a printed total", () => {
     expect(computeTotalsMismatch([item(10000)], none, null)).toBeNull();
   });
+  it("a printed round-off is part of the arithmetic (Ganbei receipt: 7447 + 253.36 + 446.82 - 0.18 = 8147)", () => {
+    expect(computeTotalsMismatch([item(744700)], { tax: 25336, tip: null, serviceFee: 44682, discount: null, roundOff: -18 }, 814700)).toBeNull();
+  });
+  it("ignores sub-50-paise rounding noise but still flags a real gap", () => {
+    expect(computeTotalsMismatch([item(744700)], { ...none, tax: 25336, serviceFee: 44682 }, 814700)).toBeNull(); // off by 18 paise
+    expect(computeTotalsMismatch([item(10000)], none, 10100)).toEqual({ itemsSum: 10000, extractedTotal: 10100, delta: -100 });
+  });
 });

@@ -30,6 +30,7 @@ const PROMPT = `You are reading a photo of a purchase receipt. Extract structure
   "tip": number | null,
   "service_fee": number | null,
   "discount": number | null,
+  "round_off": number | null,
   "total": number | null,
   "overall_confidence": "high" | "low"
 }
@@ -38,6 +39,7 @@ Rules:
 - All money amounts are integers in paise (INR minor units) — e.g. an item priced at ₹12.50 is 1250. Never output decimals or currency symbols.
 - An item's "price" is the LINE TOTAL: the amount printed for that line in the amount column, for the whole quantity. Do NOT divide it by the quantity and do NOT multiply it. Example: "Butter Naan  4  60.00" -> quantity 4, price 6000 (the whole line costs ₹60).
 - "date", if determinable, is ISO format yyyy-mm-dd.
+- "round_off" is the small rounding adjustment some receipts print ("Round off -0.18"), as SIGNED paise: negative if the receipt shows a minus, positive otherwise. Use null if there is none. It is NOT a discount and NOT part of tax.
 - If a field isn't visible on the receipt or you're not confident about it, use null rather than guessing. Never invent an item that isn't actually on the receipt.
 - An item's own "confidence" is "low" if its name, price, or quantity was hard to read clearly.
 - "overall_confidence" is "low" if the receipt is blurry, cropped, handwritten, or otherwise hard to read as a whole.
@@ -60,6 +62,7 @@ const rawExtractionSchema = z.object({
   tip: z.number().int().nonnegative().nullable().catch(null),
   service_fee: z.number().int().nonnegative().nullable().catch(null),
   discount: z.number().int().nonnegative().nullable().catch(null),
+  round_off: z.number().int().nullable().catch(null),
   total: z.number().int().nonnegative().nullable().catch(null),
   overall_confidence: z.enum(["high", "low"]).catch("low"),
 });
@@ -86,6 +89,8 @@ export interface ExtractionResult {
   tipAmount: number | null;
   serviceFeeAmount: number | null;
   discountAmount: number | null;
+  /** Signed: a printed "Round off -0.18" is -18. */
+  roundOffAmount: number | null;
   totalAmount: number | null;
   overallConfidence: "high" | "low";
   totalsMismatch: TotalsMismatch | null;
@@ -101,7 +106,7 @@ function stripCodeFences(text: string): string {
  * flag a mismatch in code, per CLAUDE.md's money rules and SPEC §2.7. */
 export function computeTotalsMismatch(
   items: ExtractedItem[],
-  charges: { tax: number | null; tip: number | null; serviceFee: number | null; discount: number | null },
+  charges: { tax: number | null; tip: number | null; serviceFee: number | null; discount: number | null; roundOff?: number | null },
   extractedTotal: number | null,
 ): TotalsMismatch | null {
   if (extractedTotal === null) return null;
@@ -111,10 +116,12 @@ export function computeTotalsMismatch(
     items.reduce((sum, item) => sum + item.price, 0) +
     (charges.tax ?? 0) +
     (charges.tip ?? 0) +
-    (charges.serviceFee ?? 0) -
+    (charges.serviceFee ?? 0) +
+    (charges.roundOff ?? 0) -
     (charges.discount ?? 0);
   const delta = itemsSum - extractedTotal;
-  if (delta === 0) return null;
+  // Under 50 paise is rounding noise (a printed round-off the model missed, or a half-rupee shave), not a mistake worth flagging.
+  if (Math.abs(delta) < 50) return null;
   return { itemsSum, extractedTotal, delta };
 }
 
@@ -171,11 +178,12 @@ export async function extractReceipt(buffer: Buffer, mimeType: string): Promise<
       tipAmount: raw.tip,
       serviceFeeAmount: raw.service_fee,
       discountAmount: raw.discount,
+      roundOffAmount: raw.round_off,
       totalAmount: raw.total,
       overallConfidence: raw.overall_confidence,
       totalsMismatch: computeTotalsMismatch(
         items,
-        { tax: raw.tax, tip: raw.tip, serviceFee: raw.service_fee, discount: raw.discount },
+        { tax: raw.tax, tip: raw.tip, serviceFee: raw.service_fee, discount: raw.discount, roundOff: raw.round_off },
         raw.total,
       ),
     };
