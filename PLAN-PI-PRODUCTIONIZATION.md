@@ -18,6 +18,7 @@
 | What can go wrong | §8 Risks |
 | Order of work + who does what | §9 Milestones |
 | Decisions still open | §10 |
+| Where the Pi work stands, and open items | `docs/PI-STATUS.md` |
 
 **Task IDs** (`P2.3`, `S4.1`, `D3.2`, `QA-7`) are stable references — use them in commits, PRs and chat.
 **Checkboxes** `[ ]` are work items. `HUMAN` = only the owner can do it (physical access, dashboards, secrets). `CLAUDE` = a coding session can do it.
@@ -154,7 +155,7 @@ File layout (new, on `dev-pi`): `deploy/pi/docker-compose.yml`, `deploy/pi/.env.
 - [x] P2.1 `postgres:17` container; data on a named volume on the SD card; settings: `fsync=on`, `synchronous_commit=on`, `full_page_writes=on`, `wal_level=logical` (needed if S2 chooses logical replication), `max_wal_size` modest, `shared_buffers=1GB`, `max_connections=50`.
 - [x] P2.2 `api` container: multi-stage build of `shared` → `server` → `client`, Node 22 on arm64. **Express serves the built client** (`client/dist`) with SPA fallback, so one origin serves PWA + API (also removes CORS need on the Pi).
 - [x] P2.3 `tailscale` container (or host install) with `TS_AUTHKEY` (reusable, **tagged**, key expiry **disabled** for this node), `tailscale serve` → `localhost:4000`, `tailscale funnel 443 on`.
-- [ ] P2.4 `restart: unless-stopped` on every service; `depends_on` with health checks; systemd unit to `docker compose up -d` on boot.
+- [x] P2.4 `restart: unless-stopped` on every service; `depends_on` with health checks; systemd unit to `docker compose up -d` on boot.
 - [x] P2.5 `/api/health` (liveness, no DB), `/api/health/db` (query), new `/api/health/role` returning `{role, active, lastSyncAt, lagSeconds}`.
 - [x] P2.6 Graceful shutdown (SIGTERM → stop accepting → drain → close pool) so `docker stop`/shutdown never kills mid-transaction.
 
@@ -163,7 +164,7 @@ File layout (new, on `dev-pi`): `deploy/pi/docker-compose.yml`, `deploy/pi/.env.
 - [x] P3.2 **Storage driver abstraction** (`server/src/lib/storage.ts`): `STORAGE_DRIVER=local|supabase`. `local` writes under `RECEIPTS_DIR` (volume), serves via **authenticated** route streaming the file (no public path; keeps "private + short-lived access" rule via signed, expiring route tokens). Same function signatures (`uploadReceiptImage`, `getReceiptSignedUrl`, `deleteReceiptImage`, `listReceiptImagePaths`).
 - [x] P3.3 **Static client serving + SPA fallback** in Express (only when `SERVE_CLIENT=true`).
 - [x] P3.4 **Role awareness:** env `APP_ROLE=primary|standby`; middleware `requireWritable` on every mutating route returning `503 {error:{message:"Read-only: backup mode switching"}}` when the node is not currently writable (S3).
-- [ ] P3.5 Cookie/proxy settings verified behind Funnel: `trust proxy`, `secure` cookie, `sameSite=lax`. Same `SESSION_SECRET` on Pi and Render (so replicated session rows validate).
+- [ ] P3.5 Cookie/proxy settings verified behind Funnel: `trust proxy`, `secure` cookie, `sameSite=lax`. Same `SESSION_SECRET` on Pi and Render (so replicated session rows validate). *Cookies verified on phones through Funnel in M3; the shared secret is still open and happens at cutover.*
 - [x] P3.6 `.env.example` per role (see Appendix B). No secrets committed.
 - [x] P3.7 Dependency hardening (also D0): `npm audit fix`, re-run tests.
 
@@ -187,9 +188,9 @@ Scale is tiny (11 MB), so use dump/restore with a short freeze.
 ### P5 — Tailscale & PWA exposure (HUMAN + CLAUDE)
 - [x] P5.1 Install/auth Tailscale on the Pi with a tag (e.g. `tag:server`); **disable key expiry** for the node.
 - [ ] P5.2 ACL: only the owner's devices get SSH/admin; Funnel exposes **only** `https:443 → localhost:4000`.
-- [ ] P5.3 Verify `https://<pi>.<tailnet>.ts.net` serves the app with a valid cert, installs as PWA on Android Chrome and iOS Safari (needs D1).
-- [ ] P5.4 Document Funnel constraints: ports 443/8443/10000 only; bandwidth is limited (undisclosed) — fine at friend-group scale; monitor.
-- [ ] P5.5 Document **what the public can reach:** only the app on that port. The tailnet's other devices/ports are not exposed; Vercel has no path to them (D5).
+- [x] P5.3 Verify `https://<pi>.<tailnet>.ts.net` serves the app with a valid cert, installs as PWA on Android Chrome and iOS Safari (needs D1).
+- [x] P5.4 Document Funnel constraints: ports 443/8443/10000 only; bandwidth is limited (undisclosed) — fine at friend-group scale; monitor.
+- [x] P5.5 Document **what the public can reach:** only the app on that port. The tailnet's other devices/ports are not exposed; Vercel has no path to them (D5).
 
 ### P6 — Power-loss & SD-card resilience (no new hardware)
 Honest framing: **cannot be eliminated, only bounded.** Bound = replication lag (target ≤ 60 s) + last good backup.
@@ -322,7 +323,7 @@ New dependency approved by this plan: `vite-plugin-pwa` (Workbox) — or hand-wr
 - [x] D1.3 Install UX: Android `beforeinstallprompt` button; iOS instructions ("Share → Add to Home Screen") shown once.
 - [x] D1.4 Failover logic S7.
 - [x] D1.5 Offline state: friendly screen when both origins unreachable.
-- [ ] D1.6 Verify camera capture + file input inside installed PWA on Android and iOS.
+- [x] D1.6 Verify camera capture + file input inside installed PWA on Android and iOS.
 - [ ] Acceptance: Lighthouse PWA/installability pass; installs from Pi URL on Android Chrome + iOS Safari; shell loads offline; failover redirect works in drill QA-6.
 
 ### D2 — Phase 6 (minus APK): settlements, debt simplification, onboarding
@@ -572,6 +573,7 @@ curl -s https://<pi>.<tailnet>.ts.net/api/health/role
 | 2026-11-01 | (branch `dev-pi-p`) | **P3 + P2 code** `DATABASE_SSL`/`DATABASE_POOLER`, local receipts (`STORAGE_DRIVER`), `SERVE_CLIENT`, graceful shutdown, `server/src/migrate.ts`, `deploy/pi/`. `deploy/pi/smoke.sh` passed on the Pi: 62/62 plus login surviving a full restart (M1 QA-1). P2.4 stays open until a reboot is confirmed to bring the stack back |
 | 2026-11-01 | (branch `dev-pi-m2`) | **M2 tooling** `deploy/pi/copy-from-supabase.sh` (P4.1–P4.4: read-only dump of the 7 app tables, atomic restore, sequences) and `server/src/tools/verify-migration.ts` (QA-4, ignores `updated_at`/`origin`). Tested against a local old-schema stand-in; P4 stays open until it passes on the Pi against real Supabase |
 | 2026-11-01 | (branch `dev-pi-m2`) | **M2 rehearsal passed on the Pi against real Supabase** QA-4 `RESULT: OK` (users 25, groups 11, group_members 28, bills 11, bill_items 21, item_assignments 53, settlements 0), then `smoke.sh` 62/62 plus login surviving a restart. Production has no settlements, so copied settlement rows weren't exercised. Still open: P4.5 cutover runbook, P4.7 receipts check, and the merge into `dev-pi`, which waits on the intermittent failback integration test |
+| 2026-11-01 | (branch `dev-pi-m2`) | **M3 passed** Owner-reported: reboot brings the stack back (P2.4); the PWA installs from the public Funnel URL on Android and iPhone, stays logged in, and handles a bill and a camera receipt (P5.3, D1.6). Funnel limits documented in `deploy/pi/README.md` (P5.4, P5.5). Failover stays off until M4 (D17). See `docs/PI-STATUS.md` |
 
 **Still open in D2:** D2.1's `Idempotency-Key` handling and `requireWritable` are deliberately *not* wired yet — they land with workstream S (S6.1 / S3). The client already sends the key.
 

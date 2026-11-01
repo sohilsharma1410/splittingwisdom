@@ -3,6 +3,7 @@
 Runs Postgres 17 and the API plus web app in Docker. Tailscale runs on the host and
 Funnel connects to `127.0.0.1:4000`. Assumes the host setup from
 `PLAN-PI-PRODUCTIONIZATION.md` (P0, P1, P5.1) is done. Commands below run on the Pi.
+Current status and open items are in `docs/PI-STATUS.md`.
 
 ## First start (M1)
 
@@ -72,6 +73,45 @@ rm -rf ~/splittingwisdom-migration
 The dump holds real user data, including password hashes, so don't leave it around
 or copy it elsewhere.
 
+## Go public with Funnel (M3)
+
+```bash
+sudo tailscale funnel --bg --https=443 localhost:4000
+sudo tailscale funnel status    # shows the public URL
+sudo tailscale funnel reset     # turns it off
+```
+
+Funnel stays on after a reboot until you reset it.
+
+- **What the public can reach:** only this app on port 443, which is the web app and
+  its API. SSH, Postgres and the tailnet's other devices aren't exposed.
+- **Registration is open:** anyone with the URL can create an account while Funnel is on.
+- **Limits:** Funnel only allows ports 443, 8443 and 10000. Its bandwidth is limited by
+  an undisclosed amount, which should be fine for a friend group.
+- **Failover:** stays off until the failover URLs are built in (plan D17).
+
+## Look inside the database
+
+Open a read-only shell, so nothing can change by accident:
+
+```bash
+cd ~/splittingwisdom/deploy/pi
+docker compose exec -e PGOPTIONS='-c default_transaction_read_only=on' postgres psql -U splittingwisdom -d splittingwisdom
+```
+
+```sql
+\dt
+\d bills
+SELECT id, display_name, email, created_at FROM users ORDER BY id;
+SELECT id, name, created_at FROM groups ORDER BY id;
+SELECT id, group_id, description, bill_date, subtotal_amount FROM bills ORDER BY id DESC LIMIT 20;
+\q
+```
+
+Amounts are in paise, so `10000` means ₹100.00. Balances aren't stored in any table:
+the app works them out when needed. Avoid `SELECT *` on `users` and `session` when
+sharing output, because they hold password hashes and login sessions.
+
 ## Day to day
 
 | To | Run |
@@ -80,7 +120,7 @@ or copy it elsewhere.
 | Read logs | `docker compose logs -f api` |
 | Deploy new code | `git pull && docker compose build && docker compose up -d` |
 | Stop or start | `sudo systemctl stop splittingwisdom` / `start` |
-| Open a database shell | `docker compose exec postgres psql -U splittingwisdom` |
+| Open a database shell that can write | `docker compose exec postgres psql -U splittingwisdom` |
 
 After `build`, `up -d` recreates what changed and reruns migrations first. If a
 deploy fails, check `docker compose logs migrate api`.
