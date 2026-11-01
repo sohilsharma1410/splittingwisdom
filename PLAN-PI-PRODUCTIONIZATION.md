@@ -51,6 +51,8 @@
 | D8 | Voice = browser speech-to-text + Gemini parse, confirm-before-save | 2026-11-01 | Fallback: record audio → Gemini (see D4/V-arch) |
 | D9 | PWA replaces Capacitor APK (Phase 6 §3 dropped) | 2026-11-01 | Assumption — owner may veto |
 | D10 | Roadmap order after infra: settlements → OCR → voice | 2026-11-01 | Assumption — owner may veto |
+| D11 | Continuous **one-way** copy Pi → Supabase is kept as the backup (Supabase never accepts writes in normal operation; Pi stays sole source of truth) | 2026-11-01 | Owner confirmed: data not highly confidential at this stage |
+| D12 | Pi ships **all** logs (success + failure) to Supabase, event-based micro-batched; **no deletion for the first ≥ 14 days**, retention module built later only if needed | 2026-11-01 | See P8; free-tier limits evaluated there |
 
 ---
 
@@ -201,6 +203,40 @@ Honest framing: **cannot be eliminated, only bounded.** Bound = replication lag 
 - [ ] P7.3 Structured logs, no PII/password hashes/tokens in logs.
 - [ ] P7.4 Secrets: `.env` mode 600; never in git; rotate `SESSION_SECRET` only with a planned re-login.
 - [ ] P7.5 Dependency/OS update cadence documented (monthly).
+
+### P8 — Log pipeline: Pi → Supabase (event-based)
+
+**Purpose:** keep a durable, queryable history of everything that happened (successes and failures) so we can analyse what went wrong — including after the Pi's SD card dies.
+
+**Supabase free-tier evaluation (limits as known at time of writing — re-verify on Supabase's pricing page before M5):**
+
+| Limit | Free tier | Impact on logging | Verdict |
+|---|---|---|---|
+| Database size | ~500 MB per project; exceeding it puts the project in **read-only** mode | Logs share the DB with real data (now 11 MB) and the standby. A runaway log table could make the **standby read-only** — the worst outcome | **Real risk → needs size monitoring + a non-deleting emergency brake (below); retention module deferred** |
+| Row count / write rate | No hard row cap or per-insert charge | Per-event single INSERTs are chatty and eat pooler connections | OK if **micro-batched** |
+| Connections | Small pooled connection budget | One long-lived sink connection only | OK |
+| Egress | ~5 GB/month | Pi → Supabase is ingress; only our own log queries count | OK |
+| Inactivity pause | ~1 week | Constant log writes are *DB* activity, which did **not** prevent the Oct-1 pause; REST-API activity may | Don't rely on it; S1 pings still required |
+| Built-in Log Explorer | Short retention on free tier, Supabase's own logs only | Not a substitute for app logs | We store our own |
+| `pg_cron` | Available as an extension | Used for retention purge | OK (verify enabled) |
+
+**Volume estimate:** ~25 users, say 5k API events/day + ~1k system events/day ≈ 6k rows/day × ~0.6 KB (row + indexes) ≈ **3.6 MB/day ≈ 110 MB/month** if nothing is purged → without retention the 500 MB cap would be hit in ~4 months. **Nothing is deleted for at least 14 days** (≈ 50 MB by then, safe); retention is decided from real measured growth afterwards (P8.8).
+
+**Conclusion:** no blocker, **provided** (a) micro-batching, (b) size monitoring with alerts + emergency brake, and a retention module before ~day 60 if growth warrants it, (c) log failures never block or slow the app, (d) no sensitive data in logs.
+
+Tasks:
+- [ ] P8.1 **Structured logging** in server (`pino`, new dep approved by this plan): JSON with `ts, level, event, requestId, userId (id only), route, method, status, durationMs, role, epoch, err{message, stack≤2KB}`. Request log middleware emits one event per request (success *and* failure). Levels: debug/info/warn/error/fatal.
+- [ ] P8.2 **Event sources:** API requests; sync-agent (batch sent/failed, lag); controller (probe results, role flips, failback steps); Postgres errors; app boot (`boot_id`, previous shutdown clean/**unclean** — key signal for power cuts); self-check results (P6.4); Tailscale/Funnel status changes; Docker container restarts; client errors from the PWA (`POST /api/logs/client`, authenticated, rate-limited, size-capped) including failover events (S7).
+- [ ] P8.3 **Never log:** passwords, hashes, session ids/cookies, auth/handoff tokens, API keys, full request/response bodies, receipt images or extracted text, raw voice transcripts. Redaction helper + unit test that fails if forbidden keys appear (QA-16).
+- [ ] P8.4 **Transport (event-based, micro-batched):** each log event is enqueued the moment it is created; a sink flushes **every ≤ 1 s or 50 events**, and **immediately for `error`/`fatal`**. One batched `INSERT … ` per flush over a single pooled connection. Idempotent via `(source, boot_id, seq)` unique key so retries never duplicate.
+- [ ] P8.5 **Never block the app:** bounded in-memory queue (e.g. 5,000 events, drop oldest `debug`/`info` first, count drops). Sink errors are swallowed and retried with backoff; they must not throw into request handling.
+- [ ] P8.6 **When Supabase/internet is unreachable:** spill to a local JSONL spool on the Pi (append-only, size-capped ~50 MB, `fsync` on error-level lines only to limit SD wear); drained in order when connectivity returns. Spool also protects error logs across a crash.
+- [ ] P8.7 **Supabase schema** (separate `ops` schema, RLS enabled, no policies for `anon`/`authenticated`; only the server's service credentials write): `ops.app_logs(id bigserial pk, ts timestamptz, source text, boot_id text, seq bigint, level text, event text, request_id text, user_id int, route text, status int, duration_ms int, data jsonb, unique(source, boot_id, seq))`; indexes **only** on `(ts)` and `(level, ts)` to keep size low.
+- [ ] P8.8 **Retention — deferred by owner decision.** **No log is deleted for at least 14 days.** During that window we only measure (daily size job writes `log_size_mb`, rows/day and per-level counts into the logs themselves). After ≥ 14 days, review the numbers together and **then** build the retention module only if required (candidate policy, *not active*: debug 3 d, info 14–30 d, warn 60 d, error/fatal 180 d via `pg_cron`). **Safeguards that do not delete data:** alert when `ops` > 150 MB or total DB > 350 MB; **emergency brake** at total DB > 450 MB: the sink stops shipping `debug`/`info` to Supabase (keeps spooling them on the Pi, P8.6) so the standby can never be pushed into read-only by logs; shipping resumes after the owner frees space or approves retention.
+- [ ] P8.9 **Render/standby also logs to the same table** (`source='render'`/`'controller'`) so the outage period is fully covered even though the Pi is down; Pi's own last moments arrive from its spool after recovery.
+- [ ] P8.10 **Analysis views** (SQL, in repo `docs/ops-queries.sql`): errors by route/day, p95 latency, failovers with timeline (probe fails → role flip → failback), unclean-shutdown list, sync lag over time, top failing users (ids).
+- [ ] P8.11 Local-only copy: Postgres/Docker logs also kept on Pi via journald (volatile + errors persisted, per P1.4) as a last resort.
+- Acceptance: disconnect internet for 10 min while generating traffic → after reconnect, **zero lost and zero duplicate** events (except documented drops); error events visible in Supabase < 5 s; size-growth report available after 14 days to decide on retention; emergency brake tested.
 
 ---
 
@@ -377,6 +413,7 @@ Mic → SpeechRecognition (browser)  ──text──┐
 - **QA-12 OCR:** 5-receipt protocol (D3.3) + review-screen DoD; unreadable photo ⇒ manual with image preserved.
 - **QA-13 Voice:** eval set (D4.7) + device matrix + denied-permission + noisy environment + wrong-person ambiguity.
 - **QA-14 Performance baselines (Pi):** p95 API latency for dashboard/bills at 25 users; DB size growth; memory < 60 % under load; cold boot → serving < 3 min.
+- **QA-16 Logging:** (a) redaction test — fuzz requests containing passwords/tokens/cookies, assert none appear in any sink; (b) network-cut test per P8 acceptance (no loss/dup); (c) kill -9 the API ⇒ next boot logs `unclean_shutdown`; (d) flood 50k debug events ⇒ app latency unaffected, drops counted; (e) emergency brake triggers at the threshold, shipping of debug/info pauses/spools, standby stays writable; (f) confirm **no rows are deleted** during the first 14 days; (g) daily size report is produced.
 - **QA-15 Regression:** Phase 1–4 checklists + all closed `BUG-n`.
 
 ### 7.4 Device & browser matrix
@@ -411,6 +448,8 @@ Bug Report sheet (owner-shared with testers) → triage to `BUG-n` with severity
 | R11 | Home internet/router outage | Medium | Medium | looks like Pi down ⇒ failover works | Writes continue on standby |
 | R12 | Clock skew breaks LWW ordering | Low | Medium | NTP enforced, use DB `now()` | — |
 | R13 | Free-tier policy changes (Supabase/Render/Vercel/Tailscale/GitHub) | Medium | Medium | quarterly review; offsite dumps | — |
+| R15 | Log volume fills Supabase 500 MB ⇒ project read-only ⇒ **standby breaks** | Medium | High | `ops` schema isolated, no deletion for 14 d then measured, alerts at 150/350 MB, **emergency brake at 450 MB** (stop shipping debug/info), micro-batching; fallback: retention module or a second free Supabase project | Needs growth review at day 14 |
+| R16 | Sensitive data leaks into logs | Medium | High | redaction helper + test, id-only user refs, no bodies | — |
 | R14 | Schema drift between Pi and Supabase | Medium | High | migrations run on both in a defined order (Pi first, then standby) via one script; CI check compares schemas | — |
 
 ---
@@ -424,7 +463,7 @@ Bug Report sheet (owner-shared with testers) → triage to `BUG-n` with severity
 | **M2** | Migrate data | P4 rehearsal → cutover runbook (no public switch yet) | QA-4 clean on Pi copy | HUMAN + CLAUDE |
 | **M3** | Funnel + PWA | P5, D1 | installs on Android + iPhone from Pi URL | HUMAN + CLAUDE |
 | **M4** | Sync & failover | S2 spike → S2–S7, S5 migration | QA-3, QA-6, QA-7, QA-8 pass | CLAUDE (+owner drills) |
-| **M5** | Resilience | P6, P7, QA-5, QA-9 start | DoD infra checklist (§7.6) met | HUMAN + CLAUDE |
+| **M5** | Resilience & logging | P6, P7, **P8**, QA-5, QA-9 start, QA-16 | DoD infra checklist (§7.6) met | HUMAN + CLAUDE |
 | **M6** | **Go-live on Pi** | announce, cutover, monitor 7 days | no data loss; alerts quiet | HUMAN |
 | **M7** | Settlements + simplification | D2 | Phase 6 settlement DoD | CLAUDE |
 | **M8** | OCR review | D3 | Phase 5 DoD | CLAUDE + HUMAN (key, receipts) |
@@ -503,6 +542,10 @@ curl -s https://<pi>.<tailnet>.ts.net/api/health/role
 | `PI_PUBLIC_URL` | — | Funnel URL | controller probes |
 | `VERCEL_URL` (client build) | — | — | S7 redirect target (public) |
 | `CONTROLLER_ENABLED` | `false` | `true` | S3 |
+| `LOG_SINK` | `supabase` | `supabase` | P8 |
+| `LOG_LEVEL` | `info` | `info` | `debug` only temporarily |
+| `LOG_SPOOL_DIR` / `LOG_SPOOL_MAX_MB` | `/data/logspool` / `50` | — | P8.6 |
+| `LOG_DATABASE_URL` | Supabase pooler (server-only) | Supabase pooler | P8.4 |
 
 ## Appendix C — Glossary
 **Primary/standby** — which stack currently accepts traffic. **Funnel** — Tailscale feature exposing one local port on a public HTTPS URL. **PWA** — installable web app (manifest + service worker). **Outbox** — durable change log table used to ship changes. **Fencing/epoch** — counter that lets a node prove it is still the legitimate primary. **RPO** — how much recent data could be lost (target ≤ 60 s). **LWW** — last-writer-wins conflict rule.
