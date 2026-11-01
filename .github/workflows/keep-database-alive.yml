@@ -1,10 +1,13 @@
 name: Keep database alive
 
-# Supabase's free tier auto-pauses a project after about a week with no
-# database activity, which took the whole app down until someone noticed
-# and manually restored it in the dashboard. This pings a real DB query
-# (not just the Express server) every 2 days — comfortably under the
-# 7-day threshold even if a run is delayed or skipped once.
+# Supabase's free tier auto-pauses a project after about a week of inactivity,
+# which took the whole app down twice. Pinging a real DB query every 2 days was
+# NOT enough: it ran green Sep 19-29, then the project paused anyway (Oct 1) —
+# direct Postgres connections evidently don't count as project activity. So this
+# now ALSO calls Supabase's own REST API, which is what the dashboard tracks.
+# Needs repo secrets SUPABASE_URL and SUPABASE_ANON_KEY (Settings -> Secrets and
+# variables -> Actions); without them that step warns and is skipped.
+# Scheduled workflows only run from the default branch.
 on:
   schedule:
     - cron: "23 5 */2 * *"
@@ -27,3 +30,21 @@ jobs:
             echo "Keep-alive ping failed with HTTP $status"
             exit 1
           fi
+
+  supabase-api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API (counts as project activity)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::warning::SUPABASE_URL / SUPABASE_ANON_KEY secrets are not set - skipping the API ping, so the project can still pause."
+            exit 0
+          fi
+          status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+            "$SUPABASE_URL/rest/v1/" -H "apikey: $SUPABASE_ANON_KEY" -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+          echo "Supabase REST API answered HTTP $status"
+          # Any real answer (2xx, or 4xx such as 401/404) proves the project is awake and counts as API traffic.
+          case "$status" in 2*|4*) exit 0 ;; *) echo "Supabase API unreachable"; exit 1 ;; esac
