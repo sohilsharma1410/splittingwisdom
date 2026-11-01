@@ -7,6 +7,8 @@
  * stays unassigned, because a blank is safe and a wrong guess isn't.
  */
 
+import { soundsLike } from "./speech-names.js";
+
 export interface SpeechItem {
   index: number;
   name: string;
@@ -139,7 +141,10 @@ function tagWords(text: string, items: SpeechItem[], members: SpeechMember[]): T
       const speaker = members.find((member) => member.isSpeaker);
       if (speaker) tags.push({ kind: "person", ids: [speaker.id], word: token });
     } else {
-      const people = members.filter((member) => words(member.name).some((part) => sameWord(token, part)));
+      const byName = (match: (part: string) => boolean) => members.filter((member) => words(member.name).some(match));
+      // Someone saying a name exactly is believed over a similar-sounding name ("Kiran" when "Karan" is also in the group).
+      const exact = byName((part) => part === token);
+      const people = exact.length > 0 ? exact : byName((part) => sameWord(token, part) || soundsLike(token, part));
       if (people.length > 0 && !NOT_NAMES.has(token)) {
         tags.push({ kind: "person", ids: people.map((member) => member.id), word: token });
         continue;
