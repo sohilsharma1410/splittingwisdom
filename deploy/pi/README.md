@@ -123,7 +123,9 @@ cd ~/splittingwisdom/deploy/pi/ocr-spike
 ./run.sh           # your own photos from ~/ocr-test
 ```
 
-Results go to `~/ocr-test-results`. Keep your own photos out of the repo, because it's public.
+Samples already in `~/ocr-test-public` with `~/ocr-test-public-answers/answers.json` are
+reused, so you can copy them over instead of downloading. Results go to `~/ocr-test-results`.
+Keep your own photos out of the repo, because it's public.
 
 ## Day to day
 

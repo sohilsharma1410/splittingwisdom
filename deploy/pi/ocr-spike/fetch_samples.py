@@ -11,6 +11,8 @@ The images are never stored in this repo.
 import io
 import json
 import sys
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -20,12 +22,29 @@ from PIL import Image, ImageOps
 API = "https://datasets-server.huggingface.co/rows"
 LONGEST_EDGE = 2000  # Sized like a phone photo after upload, so the timings are realistic.
 PAGE = 100
+ATTEMPTS = 6
+RETRY_SECONDS = 5
 
 
 def fetch(url):
+    """Retries, because the dataset server sometimes answers 502 or is rate limited."""
     request = urllib.request.Request(url, headers={"User-Agent": "splittingwisdom-ocr-test"})
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return response.read()
+    for attempt in range(1, ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                return response.read()
+        except (urllib.error.URLError, TimeoutError) as err:
+            status = getattr(err, "code", None)
+            if status is not None and status != 429 and status < 500:
+                raise SystemExit(f"STOP: the dataset server refused the request (HTTP {status}).")
+            if attempt == ATTEMPTS:
+                raise SystemExit(
+                    f"STOP: the dataset server isn't responding ({status or type(err).__name__}). "
+                    "Nothing is wrong on the Pi. Try again later."
+                )
+            wait = RETRY_SECONDS * 2 ** (attempt - 1)
+            print(f"The dataset server didn't answer ({status or type(err).__name__}), retrying in {wait}s", flush=True)
+            time.sleep(wait)
 
 
 def rows(dataset, count):
