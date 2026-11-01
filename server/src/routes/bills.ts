@@ -23,7 +23,7 @@ import { getMembership } from "../middleware/authorize.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { idempotency } from "../middleware/idempotency.js";
 import { isSupportedReceiptMimeType, uploadReceiptImage, getReceiptSignedUrl } from "../lib/storage.js";
-import { extractReceipt } from "../lib/receipt-extract.js";
+import { extractReceipt, ocrInfo } from "../lib/receipt-extract.js";
 import { loadBillStatuses } from "../lib/bill-status.js";
 
 const MAX_RECEIPT_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -269,6 +269,14 @@ router.post("/", idempotency(), async (req, res) => {
   }
   const input = parsed.data;
 
+  // The photo path comes back from the client after /extract. Only accept one this user uploaded:
+  // paths are "<uploaderId>/<random>.<ext>", so anything else is someone else's receipt (or junk).
+  const receiptImagePath = input.receiptImageUrl ?? null;
+  if (receiptImagePath !== null && !new RegExp(`^${req.session.userId}/[A-Za-z0-9_-]{16}\\.(jpg|png|webp)$`).test(receiptImagePath)) {
+    res.status(400).json({ error: { message: "That receipt photo can't be attached to this bill." } });
+    return;
+  }
+
   // No groupId means an individual bill (no real named group) — resolve
   // (or lazily create) a hidden group for the exact set of participants
   // instead. Item assignments and paidByMemberId the client sent are that
@@ -338,6 +346,7 @@ router.post("/", idempotency(), async (req, res) => {
         description: input.description,
         merchant: input.merchant ?? null,
         billDate: input.billDate,
+        receiptImageUrl: receiptImagePath,
         subtotalAmount: input.subtotalAmount,
         taxAmount: input.taxAmount ?? 0,
         tipAmount: input.tipAmount ?? 0,
@@ -411,6 +420,8 @@ router.post(
         imagePath,
         extraction,
         extractionFailed: extraction === null,
+        // Which model read it (no secrets) — the review screen shows it, handy when comparing models.
+        ocr: ocrInfo(),
       },
     });
   },

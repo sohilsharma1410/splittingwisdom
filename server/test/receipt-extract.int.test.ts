@@ -45,12 +45,12 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => ocr.listen(0, "127.0.0.1", resolve));
   process.env.RECEIPTS_DIR = dir;
   process.env.STORAGE_DRIVER = "local";
-  process.env.OCR_DRIVER = "local";
+  process.env.OCR_PROVIDER = "rapidocr";
   process.env.OCR_URL = `http://127.0.0.1:${(ocr.address() as AddressInfo).port}`;
 });
 
 afterAll(async () => {
-  for (const key of ["RECEIPTS_DIR", "STORAGE_DRIVER", "OCR_DRIVER", "OCR_URL"]) {
+  for (const key of ["RECEIPTS_DIR", "STORAGE_DRIVER", "OCR_PROVIDER", "OCR_URL"]) {
     if (savedEnv[key] === undefined) delete process.env[key];
     else process.env[key] = savedEnv[key];
   }
@@ -80,6 +80,7 @@ describe("POST /api/bills/extract with local OCR", () => {
     expect(res.body.data.extraction.items).toEqual([{ name: "Tea", price: 8000, quantity: 2, confidence: "high" }]);
     expect(res.body.data.extraction.totalAmount).toBe(8000);
     expect(res.body.data.imagePath).toBeTruthy();
+    expect(res.body.data.ocr).toEqual({ provider: "rapidocr", model: "local OCR" });
     expect(received[0].equals(IMAGE)).toBe(true);
   });
 

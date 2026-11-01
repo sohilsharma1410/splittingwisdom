@@ -74,7 +74,7 @@ services:
       SERVE_CLIENT: "true"
       STORAGE_DRIVER: local
       RECEIPTS_DIR: /data/receipts
-      OCR_DRIVER: local
+      OCR_PROVIDER: rapidocr
       OCR_URL: http://ocr:8000
     networks:
       - default

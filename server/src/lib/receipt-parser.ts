@@ -1,5 +1,5 @@
 import { rupeesToPaise } from "@splittingwisdom/shared";
-import type { ExtractedItem, ExtractionResult, TotalsMismatch } from "./gemini.js";
+import { computeTotalsMismatch, type ExtractedItem, type ExtractionResult } from "./receipt-ocr.js";
 
 /**
  * Turns local OCR output (text boxes) into bill data. Pure, so it's easy to test.
@@ -456,14 +456,18 @@ export function parseReceipt(boxes: OcrBox[]): ExtractionResult | null {
   }
 
   // Round-off is often printed without its sign, so the total decides when it can.
+  let roundOffAmount: number | null = null;
   if (roundOff !== null && roundOff.paise !== 0) {
     const gap = total === null ? null : total - withoutRound(true);
-    const adjustment = gap !== null && Math.abs(gap) === roundOff.paise ? gap : roundOff.negative ? -roundOff.paise : roundOff.paise;
-    if (adjustment > 0) tax = add(tax, adjustment);
-    else discount = add(discount, -adjustment);
+    roundOffAmount = gap !== null && Math.abs(gap) === roundOff.paise ? gap : roundOff.negative ? -roundOff.paise : roundOff.paise;
   }
 
-  const totalsMismatch = findMismatch(withoutRound(true), total);
+  // The same totals rule as every other reader, so the review screen behaves the same.
+  const totalsMismatch = computeTotalsMismatch(
+    items,
+    { tax, tip, serviceFee, discount, roundOff: roundOffAmount },
+    total,
+  );
   const lowItems = items.filter((item) => item.lowConfidence).length;
   const overallConfidence =
     total === null || items.length === 0 || totalsMismatch !== null || doubtfulSummary || lowItems * 3 >= items.length ? "low" : "high";
@@ -477,14 +481,9 @@ export function parseReceipt(boxes: OcrBox[]): ExtractionResult | null {
     tipAmount: tip,
     serviceFeeAmount: serviceFee,
     discountAmount: discount,
+    roundOffAmount,
     totalAmount: total,
     overallConfidence,
     totalsMismatch,
   };
-}
-
-function findMismatch(itemsSum: number, extractedTotal: number | null): TotalsMismatch | null {
-  if (extractedTotal === null) return null;
-  const delta = itemsSum - extractedTotal;
-  return delta === 0 ? null : { itemsSum, extractedTotal, delta };
 }

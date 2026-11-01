@@ -8,6 +8,7 @@ import {
   formatPaise,
   getPairwiseBalance,
   groupMembers,
+  routeThroughDebts,
   settlements,
   type GroupDebtLine,
 } from "@splittingwisdom/shared";
@@ -81,18 +82,26 @@ router.post("/", idempotency(), async (req, res) => {
       const check = checkSettlement(pairwise, input.payerMemberId, input.recipientMemberId, input.amount);
       if (!check.ok) return reject(422, check.message);
 
-      const [row] = await tx
-        .insert(settlements)
-        .values({
-          groupId: input.groupId,
-          payerMemberId: input.payerMemberId,
-          recipientMemberId: input.recipientMemberId,
-          amount: input.amount,
-          note,
-          settlementDate,
-        })
-        .returning();
-      return { created: [row] };
+      // A real debt between these two is paid directly. Otherwise (a "simplified" payment, where
+      // the payer owes someone else) it is recorded as the chain of real debts it stands for, so
+      // the Direct view ends up clean instead of leaving offsetting entries behind.
+      const hops =
+        input.amount <= directDebt(pairwise, input.payerMemberId, input.recipientMemberId)
+          ? null
+          : routeThroughDebts(pairwise, input.payerMemberId, input.recipientMemberId, input.amount);
+      const nameOf = (id: number) => members.find((m) => m.id === id)?.displayName ?? "someone";
+      const rows = hops
+        ? hops.map((h) => ({
+            groupId: input.groupId,
+            payerMemberId: h.fromMemberId,
+            recipientMemberId: h.toMemberId,
+            amount: h.amount,
+            note: `Simplified payment: ${nameOf(input.payerMemberId)} paid ${nameOf(input.recipientMemberId)}${note ? ` — ${note}` : ""}`.slice(0, 200),
+            settlementDate,
+          }))
+        : [{ groupId: input.groupId, payerMemberId: input.payerMemberId, recipientMemberId: input.recipientMemberId, amount: input.amount, note, settlementDate }];
+      const created = await tx.insert(settlements).values(rows).returning();
+      return { created };
     });
 
     if ("rejected" in outcome) {

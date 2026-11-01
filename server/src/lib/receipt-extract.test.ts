@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { extractLocally, extractReceipt, ocrDriver } from "./receipt-extract.js";
+import { extractLocally, extractReceipt, ocrInfo, usesLocalOcr } from "./receipt-extract.js";
 
 const IMAGE = Buffer.from("made-up image");
 
@@ -12,20 +12,32 @@ function box(text: string, row: number, column = 0) {
 const answer = (status: number, body: unknown) =>
   vi.fn(async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
 
-describe("ocrDriver", () => {
+describe("choosing the reader", () => {
   it("only uses local OCR when asked, so Render needs no new env vars", () => {
-    expect(ocrDriver({})).toBe("gemini");
-    expect(ocrDriver({ OCR_DRIVER: "local" })).toBe("local");
-    expect(ocrDriver({ OCR_DRIVER: " Local " })).toBe("local");
-    expect(ocrDriver({ OCR_DRIVER: "gemini" })).toBe("gemini");
+    expect(usesLocalOcr({})).toBe(false);
+    expect(usesLocalOcr({ OCR_PROVIDER: "gemini" })).toBe(false);
+    expect(usesLocalOcr({ OCR_PROVIDER: "rapidocr" })).toBe(true);
+    expect(usesLocalOcr({ OCR_PROVIDER: " RapidOCR " })).toBe(true);
   });
 
-  it("treats a typo as invalid, so it can't send photos to Google", async () => {
-    expect(ocrDriver({ OCR_DRIVER: "lcoal" })).toBe("invalid");
+  it("doesn't confuse local OCR with a local model server", () => {
+    expect(usesLocalOcr({ OCR_PROVIDER: "local" })).toBe(false);
+  });
 
+  it("names the reader for the review screen", () => {
+    expect(ocrInfo({ OCR_PROVIDER: "rapidocr" })).toEqual({ provider: "rapidocr", model: "local OCR" });
+    expect(ocrInfo({ OCR_PROVIDER: "gemini", OCR_MODEL: "some-model" })).toEqual({ provider: "gemini", model: "some-model" });
+  });
+
+  it("doesn't fail the request over a mistyped setting", () => {
+    expect(ocrInfo({ OCR_PROVIDER: "rapidcr" })).toEqual({ provider: "unknown", model: "the receipt reader" });
+  });
+
+  it("treats a typo as a failed scan, so it can't send photos to Google", async () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const realFetch = vi.spyOn(globalThis, "fetch");
-    vi.stubEnv("OCR_DRIVER", "lcoal");
+    vi.stubEnv("OCR_PROVIDER", "rapidcr");
+    vi.stubEnv("GEMINI_API_KEY", "not-a-real-key");
     expect(await extractReceipt(IMAGE, "image/jpeg")).toBeNull();
     expect(realFetch).not.toHaveBeenCalled();
     vi.unstubAllEnvs();

@@ -548,7 +548,7 @@ curl -s https://<pi>.<tailnet>.ts.net/api/health/role
 | `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` | for sync-agent only | for storage + sync | server-only, never client |
 | `SUPABASE_ANON_KEY` | — | — | **GitHub secret** for keep-alive only |
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | yes | yes | D3.1 |
-| `OCR_DRIVER` / `OCR_URL` | `local` / `http://ocr:8000` | unset (Gemini, or manual entry with no key) | D18 |
+| `OCR_PROVIDER` / `OCR_URL` | `rapidocr` / `http://ocr:8000` | unset (Gemini, or manual entry with no key) | D18 |
 | `TS_AUTHKEY` | yes (tagged, reusable) | — | |
 | `PI_PUBLIC_URL` | — | Funnel URL | controller probes |
 | `VERCEL_URL` (client build) | — | — | S7 redirect target (public) |
@@ -590,3 +590,38 @@ curl -s https://<pi>.<tailnet>.ts.net/api/health/role
 - Text accents use `text-*-ink` classes (`text-mint-ink`, `text-coral-ink`, …), **not** `text-mint`/`text-coral`: the brand tints fail WCAG contrast as text on light backgrounds. Use `bg-*`/`border-*` for fills and borders.
 - If Express starts serving the client (P3.3) and a strict CSP is added: `client/public/theme-init.js` is a separate file on purpose (no inline scripts needed); fonts come from `fonts.googleapis.com`/`fonts.gstatic.com`.
 - `client/vercel.json` rewrites `/api/*` to the Render API; Vercel previews are behind Vercel login (Deployment Protection) and their `/api` still points at production Render.
+
+---
+
+## Appendix F — Must be done BEFORE going live on the Pi (tracked list)
+
+Owner decision 2026-11-01: Pi data and sync are deferred while the product is still changing. Nothing below is done yet; **none of it may be skipped at cutover**. Tick items here as they're completed. Sources: `docs/PI-STATUS.md` (Pi developer), the S workstream report, and this plan.
+
+**Data and schema**
+- [ ] F1 Check Supabase's real schema version (believed to be migration 0003), **back it up**, then apply migrations 0004–0007 (they add idempotency keys, sync triggers, outbox, role state, and make constraints DEFERRABLE). Render's code needs 0004 for `POST /api/bills`, so this is also required before Render is updated.
+- [ ] F2 Wipe the Pi's M3 test accounts and re-run `deploy/pi/copy-from-supabase.sh` (needs Funnel off) so Pi and Supabase IDs don't collide. Re-verify with `server/src/tools/verify-migration.ts`.
+- [ ] F3 Receipts: `SELECT count(*) FROM bills WHERE receipt_image_url IS NOT NULL;` on Supabase; if any, copy them to the Pi (P4.7).
+- [ ] F4 Pi Postgres runs with `timezone='UTC'`; restores use `SET sw.sync_apply=on` or `--disable-triggers` (S report #3, #4).
+- [ ] F5 Write the cutover runbook (P4.5) and a rollback plan; rehearse once.
+
+**Sync and failover (M4)**
+- [ ] F6 Switch the sync agent on, `APP_ROLE`/`system_state` set up on Pi and Render, controller running on Render.
+- [ ] F7 Decide idempotency-key syncing between nodes (S report #2: today a retry on the standby after a Pi success could double-record a payment). Recommended: build it.
+- [ ] F8 Decide the cold-start policy (S report #1: Pi refuses writes if it can't read `system_state` on boot; stays writable 10 min after a successful read).
+- [ ] F9 Purge the outbox on nodes without an agent (e.g. Render) so it doesn't grow (S report #6).
+- [ ] F10 Fix the intermittent failback test race (see `docs/PI-STATUS.md`).
+- [ ] F11 Receipts copied to the standby (S2.5) so they show during an outage.
+- [ ] F12 Full failover + failback + power-cut drills on the real Pi (QA-5, QA-6, QA-7, QA-8).
+
+**Standby (Render + Vercel + Supabase)**
+- [ ] F13 Render and Vercel run the **same build** as the Pi (S7.5), with `VITE_PRIMARY_URL` / `VITE_STANDBY_URL` set on both, and the same `SESSION_SECRET` on Pi and Render.
+- [ ] F14 Keep-alive: GitHub secrets `SUPABASE_URL` + `SUPABASE_ANON_KEY` added, workflow on `main`, confirmed green; confirm in the dashboard on ~Nov 12 and ~Nov 20 that Supabase did not pause. 14-day soak (QA-9).
+- [ ] F15 Check the Vercel 429 "hibernate-rate-limited" bot challenge in a normal browser and that keep-alive pings through Vercel aren't blocked.
+- [ ] F16 Render keep-warm pinger (S1.2), so a failover isn't a 40-second cold start.
+
+**Access, security, ops**
+- [ ] F17 Funnel ACL matches the plan (P5.2); SSH key auth instead of password (P1.1, D15).
+- [ ] F18 Backups: nightly dump + weekly offsite (P6.3); restore rehearsed and timed.
+- [ ] F19 Alerts wired (P7.1) and log pipeline (P8) decided.
+- [ ] F20 Final regression: all phone checks on Android + iPhone against the Pi URL, `scripts/qa-smoke.mjs` against the Pi, and the browser suite.
+

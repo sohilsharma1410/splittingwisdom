@@ -129,8 +129,9 @@ describe("parseReceipt: a restaurant bill", () => {
     ]);
   });
 
-  it("adds both GST lines and an unsigned round-off into tax", () => {
-    expect(result.taxAmount).toBe(3938 + 3938 + 24);
+  it("adds both GST lines, and keeps the round-off separate with its direction", () => {
+    expect(result.taxAmount).toBe(3938 + 3938);
+    expect(result.roundOffAmount).toBe(24);
     expect(result.serviceFeeAmount).toBe(7500);
     expect(result.subtotalAmount).toBe(150000);
     expect(result.totalAmount).toBe(165400);
@@ -138,7 +139,7 @@ describe("parseReceipt: a restaurant bill", () => {
 
   it("adds up exactly to the printed total", () => {
     const sum = result.items.reduce((total, item) => total + item.price, 0);
-    expect(sum + result.taxAmount! + result.serviceFeeAmount!).toBe(result.totalAmount);
+    expect(sum + result.taxAmount! + result.serviceFeeAmount! + result.roundOffAmount!).toBe(result.totalAmount);
     expect(result.totalsMismatch).toBeNull();
     expect(result.overallConfidence).toBe("high");
   });
@@ -229,16 +230,17 @@ describe("parseReceipt: charges", () => {
     expect(result.totalsMismatch).toBeNull();
   });
 
-  it("treats a negative round-off as a discount", () => {
+  it("keeps a negative round-off's sign", () => {
     const result = parseReceipt(receipt([["Thali", "500.50"], ["Round Off", "-0.50"], ["Grand Total", "500.00"]]))!;
-    expect(result.discountAmount).toBe(50);
+    expect(result.roundOffAmount).toBe(-50);
+    expect(result.discountAmount).toBeNull();
     expect(result.taxAmount).toBeNull();
     expect(result.totalsMismatch).toBeNull();
   });
 
   it("works out an unsigned round-off's direction from the total", () => {
     const result = parseReceipt(receipt([["Thali", "500.50"], ["Round Off", "0.50"], ["Grand Total", "500.00"]]))!;
-    expect(result.discountAmount).toBe(50);
+    expect(result.roundOffAmount).toBe(-50);
     expect(result.totalsMismatch).toBeNull();
   });
 
@@ -368,6 +370,11 @@ describe("parseReceipt: dishes that look like labels", () => {
 });
 
 describe("parseReceipt: never hiding doubt", () => {
+  it("uses the shared rule that a gap under 50 paise is rounding noise", () => {
+    expect(parseReceipt(receipt([["Thali", "500.30"], ["Grand Total", "500.00"]]))!.totalsMismatch).toBeNull();
+    expect(parseReceipt(receipt([["Thali", "500.50"], ["Grand Total", "500.00"]]))!.totalsMismatch?.delta).toBe(50);
+  });
+
   it("flags a totals mismatch with the exact difference", () => {
     const result = parseReceipt(receipt([["Thali", "500.00"], ["Grand Total", "550.00"]]))!;
     expect(result.totalsMismatch).toEqual({ itemsSum: 50000, extractedTotal: 55000, delta: -5000 });

@@ -106,6 +106,8 @@ export interface CreateBillInput {
   serviceFeeAmount: number;
   discountAmount: number;
   paidByMemberId?: number;
+  /** Path returned by /api/bills/extract for the scanned photo. The server only accepts paths you uploaded. */
+  receiptImageUrl?: string;
   items: BillItemInput[];
 }
 
@@ -224,6 +226,43 @@ export function useDeleteBill(id: number, groupId: number) {
     onSuccess: () => {
       invalidateBillEffects(queryClient, groupId);
       queryClient.removeQueries({ queryKey: ["bills", id] });
+    },
+  });
+}
+
+export interface ReceiptExtraction {
+  merchant: string | null;
+  billDate: string | null;
+  items: { name: string; price: number; quantity: number; confidence: "high" | "low" }[];
+  subtotalAmount: number | null;
+  taxAmount: number | null;
+  tipAmount: number | null;
+  serviceFeeAmount: number | null;
+  discountAmount: number | null;
+  /** Signed paise: a printed "Round off -0.18" is -18. */
+  roundOffAmount: number | null;
+  totalAmount: number | null;
+  overallConfidence: "high" | "low";
+  totalsMismatch: { itemsSum: number; extractedTotal: number; delta: number } | null;
+}
+
+export interface ExtractResponse {
+  /** Where the photo was stored; pass back as receiptImageUrl when saving the bill. */
+  imagePath: string;
+  extraction: ReceiptExtraction | null;
+  extractionFailed: boolean;
+  /** Which model read it. */
+  ocr?: { provider: string; model: string };
+}
+
+/** Uploads a receipt photo and returns what the model read. The photo is stored even when reading fails. */
+export function useExtractReceipt() {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const small = await downscaleImage(file);
+      const form = new FormData();
+      form.append("image", small);
+      return apiFetch<ExtractResponse>("/api/bills/extract", { method: "POST", body: form });
     },
   });
 }

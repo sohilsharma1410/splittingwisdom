@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { parseDateOnly } from "@/lib/date";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, ChevronDown, Loader2, X } from "lucide-react";
+import { CalendarIcon, ChevronDown, Loader2, ScanLine, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -472,6 +472,21 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
                 : "List each item — split equally by default, override any item below."}
           </DialogDescription>
         </DialogHeader>
+
+        {!isEditing && (
+          <Button
+            type="button"
+            variant="outline"
+            className="mb-4 w-full"
+            onClick={() => {
+              onOpenChange(false);
+              navigate(`/bill/new/scan${lockedGroupId ? `?group=${lockedGroupId}` : ""}`);
+            }}
+          >
+            <ScanLine className="h-4 w-4" aria-hidden="true" />
+            Scan a receipt instead
+          </Button>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           {!lockedGroupId && !isEditing && (

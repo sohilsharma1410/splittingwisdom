@@ -1,17 +1,15 @@
 import { z } from "zod";
-import { extractReceipt as extractWithGemini, type ExtractionResult } from "./gemini.js";
+import { extractReceipt as extractWithVisionModel, ocrInfo as visionModelInfo, type ExtractionResult } from "./receipt-ocr.js";
 import { parseReceipt } from "./receipt-parser.js";
 
-// Plan D18. The Pi reads receipts itself with OCR_DRIVER=local. The default keeps
-// Render working without any new env vars.
-export type OcrDriver = "gemini" | "local" | "invalid";
-
+// Plan D18: local OCR on the Pi is the primary reader, and Gemini is the secondary.
+// OCR_PROVIDER=rapidocr uses the Pi's ocr container. Anything else goes to receipt-ocr.ts
+// unchanged, including an unknown value, which it refuses rather than sending anywhere.
+const RAPIDOCR = "rapidocr";
 const TIMEOUT_MS = 30_000;
 
-/** An unknown value is "invalid", never Gemini, so a typo can't send photos to Google. */
-export function ocrDriver(env: NodeJS.ProcessEnv = process.env): OcrDriver {
-  const driver = env.OCR_DRIVER?.trim().toLowerCase() || "gemini";
-  return driver === "local" || driver === "gemini" ? driver : "invalid";
+export function usesLocalOcr(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.OCR_PROVIDER?.trim().toLowerCase() === RAPIDOCR;
 }
 
 const ocrResponseSchema = z.object({
@@ -55,10 +53,16 @@ export async function extractLocally(buffer: Buffer, mimeType: string, deps: Loc
   }
 }
 
-export async function extractReceipt(buffer: Buffer, mimeType: string): Promise<ExtractionResult | null> {
-  const driver = ocrDriver();
-  if (driver === "local") return extractLocally(buffer, mimeType);
-  if (driver === "gemini") return extractWithGemini(buffer, mimeType);
-  console.error('OCR_DRIVER must be "local" or "gemini", so this scan was skipped.');
-  return null;
+export function extractReceipt(buffer: Buffer, mimeType: string): Promise<ExtractionResult | null> {
+  return usesLocalOcr() ? extractLocally(buffer, mimeType) : extractWithVisionModel(buffer, mimeType);
+}
+
+/** What read the receipt, shown on the review screen. A bad setting must not fail the request. */
+export function ocrInfo(env: NodeJS.ProcessEnv = process.env): { provider: string; model: string } {
+  if (usesLocalOcr(env)) return { provider: RAPIDOCR, model: "local OCR" };
+  try {
+    return visionModelInfo(env);
+  } catch {
+    return { provider: "unknown", model: "the receipt reader" };
+  }
 }
