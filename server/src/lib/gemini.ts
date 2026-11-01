@@ -2,8 +2,9 @@ import { GoogleGenAI, createPartFromBase64 } from "@google/genai";
 import { z } from "zod";
 
 // Configurable because Google retires model ids; check it still exists before relying on OCR.
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
-const TIMEOUT_MS = 30_000;
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+// Newer models take several seconds on a photo, and Google's servers sometimes answer 503 "high demand".
+const TIMEOUT_MS = 60_000;
 
 // Lazily created on first actual use, not at import time — a missing key
 // must never crash the whole server on boot. extractReceipt's own
@@ -35,6 +36,7 @@ const PROMPT = `You are reading a photo of a purchase receipt. Extract structure
 
 Rules:
 - All money amounts are integers in paise (INR minor units) — e.g. an item priced at ₹12.50 is 1250. Never output decimals or currency symbols.
+- An item's "price" is the LINE TOTAL: the amount printed for that line in the amount column, for the whole quantity. Do NOT divide it by the quantity and do NOT multiply it. Example: "Butter Naan  4  60.00" -> quantity 4, price 6000 (the whole line costs ₹60).
 - "date", if determinable, is ISO format yyyy-mm-dd.
 - If a field isn't visible on the receipt or you're not confident about it, use null rather than guessing. Never invent an item that isn't actually on the receipt.
 - An item's own "confidence" is "low" if its name, price, or quantity was hard to read clearly.
@@ -97,14 +99,16 @@ function stripCodeFences(text: string): string {
 
 /** Never trust the model's own total — recompute from items + charges and
  * flag a mismatch in code, per CLAUDE.md's money rules and SPEC §2.7. */
-function computeTotalsMismatch(
+export function computeTotalsMismatch(
   items: ExtractedItem[],
   charges: { tax: number | null; tip: number | null; serviceFee: number | null; discount: number | null },
   extractedTotal: number | null,
 ): TotalsMismatch | null {
   if (extractedTotal === null) return null;
   const itemsSum =
-    items.reduce((sum, item) => sum + item.price * item.quantity, 0) +
+    // `price` is the line total (the amount printed for that line), exactly as the rest of the
+    // app uses it — "4 naan   60.00" is ₹60 for all four, so never multiply by quantity.
+    items.reduce((sum, item) => sum + item.price, 0) +
     (charges.tax ?? 0) +
     (charges.tip ?? 0) +
     (charges.serviceFee ?? 0) -
@@ -123,14 +127,25 @@ export async function extractReceipt(buffer: Buffer, mimeType: string): Promise<
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const response = await getClient().models.generateContent({
-      model: MODEL,
-      contents: [PROMPT, createPartFromBase64(buffer.toString("base64"), mimeType)],
-      config: {
-        responseMimeType: "application/json",
-        abortSignal: controller.signal,
-      },
-    });
+    const request = () =>
+      getClient().models.generateContent({
+        model: MODEL,
+        contents: [PROMPT, createPartFromBase64(buffer.toString("base64"), mimeType)],
+        config: {
+          responseMimeType: "application/json",
+          abortSignal: controller.signal,
+        },
+      });
+    let response;
+    try {
+      response = await request();
+    } catch (err) {
+      // One quick retry for "high demand" (503) / rate-limit (429) blips; anything else is a real failure.
+      const message = err instanceof Error ? err.message : "";
+      if (!/\b(503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED/.test(message)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      response = await request();
+    }
 
     const text = response.text;
     if (!text) return null;

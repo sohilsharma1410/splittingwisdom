@@ -8,7 +8,7 @@ import "dotenv/config";
 import { GoogleGenAI } from "@google/genai";
 
 const key = process.env.GEMINI_API_KEY;
-const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 
 async function main() {
   if (!key || key === "change-me") {
