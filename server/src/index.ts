@@ -23,12 +23,13 @@ app.set("trust proxy", 1);
 
 // CSP is off here: the API serves JSON only today; revisit with a real policy when Express also serves the built client.
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(
-  cors({
-    origin: CLIENT_ORIGIN,
-    credentials: true,
-  }),
-);
+// The other copy of the app (a different origin) probes these to decide whether to fail over; GET only, no cookies.
+const healthCors = cors({ origin: "*", methods: ["GET"] });
+const appCors = cors({
+  origin: CLIENT_ORIGIN,
+  credentials: true,
+});
+app.use((req, res, next) => (req.path.startsWith("/api/health") ? healthCors(req, res, next) : appCors(req, res, next)));
 app.use(express.json());
 app.use(sessionMiddleware);
 

@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/shell/sidebar";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { MobileHeader } from "@/components/shell/mobile-header";
 import { BillFormDialog } from "@/components/bills/bill-form-dialog";
+import { InstallBanner } from "@/components/pwa/install-banner";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [newBillOpen, setNewBillOpen] = useState(false);
@@ -17,6 +18,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen bg-background text-foreground">
       <Sidebar onNewBill={() => setNewBillOpen(true)} />
       <div className="flex min-w-0 flex-1 flex-col">
+        <InstallBanner />
         <MobileHeader />
         <main className="mx-auto w-full max-w-[1152px] flex-1 px-4 pb-24 pt-6 md:px-8 md:pb-10">
           {children}
