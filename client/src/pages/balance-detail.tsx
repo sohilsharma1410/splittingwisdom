@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { useParams } from "wouter";
 import { format } from "date-fns";
-import { Scale, TrendingUp, TrendingDown, CheckCircle2, ChevronRight } from "lucide-react";
+import { Scale, TrendingUp, TrendingDown, CheckCircle2, ChevronRight, ArrowUpRight, ArrowDownLeft } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/ui/back-button";
 import { InitialsAvatar } from "@/components/ui/avatar";
 import { BreakdownDialog } from "@/components/bills/breakdown-dialog";
-import { useBalanceDetail, type ContributingBill } from "@/hooks/use-balances";
+import { useBalanceDetail, type ContributingBill, type SettlementHistoryItem } from "@/hooks/use-balances";
+import { SettleButton } from "@/components/settlements/settle-button";
 import { formatPaise } from "@splittingwisdom/shared";
 import { cn } from "@/lib/utils";
 import { parseDateOnly } from "@/lib/date";
@@ -68,13 +68,33 @@ export default function BalanceDetail() {
               : `${isOwedToMe ? "Owes you" : "You owe"} ${formatPaise(Math.abs(data.netAmount))}`}
           </p>
         </div>
-        <div className="ml-auto flex flex-col items-end gap-1">
-          <Button variant="outline" disabled className="text-muted-foreground">
-            Settle Up
-          </Button>
-          <p className="text-xs text-muted-foreground">Coming soon</p>
-        </div>
+        {!isSettled && (
+          <div className="ml-auto">
+            <SettleButton
+              personId={data.personId}
+              displayName={data.displayName}
+              netAmount={data.netAmount}
+              size="default"
+            />
+          </div>
+        )}
       </header>
+
+      {data.settlements.length > 0 && (
+        <p
+          className="tabular-currency rounded-xl border border-border bg-surface p-4 text-sm text-muted-foreground"
+          data-testid="balance-math"
+        >
+          Bills {formatPaise(Math.abs(data.billsNet))} {data.billsNet >= 0 ? "owed to you" : "you owe"}
+          {" − "}settled {formatPaise(Math.abs(data.settlementsNet))}
+          {" → "}
+          <span className="font-semibold text-foreground">
+            {isSettled
+              ? "settled up"
+              : `outstanding ${formatPaise(Math.abs(data.netAmount))}`}
+          </span>
+        </p>
+      )}
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Contributing bills</h2>
@@ -91,11 +111,19 @@ export default function BalanceDetail() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Settlement history</h2>
-        <EmptyState
-          icon={Scale}
-          heading="No settlements yet"
-          description="Settlement records arrive in a later update."
-        />
+        {data.settlements.length === 0 ? (
+          <EmptyState
+            icon={Scale}
+            heading="No settlements yet"
+            description="Payments between you two will show up here."
+          />
+        ) : (
+          <ul className="space-y-2">
+            {data.settlements.map((payment) => (
+              <SettlementRow key={payment.id} payment={payment} otherName={data.displayName} />
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );
@@ -151,5 +179,34 @@ function ContributingBillCard({ bill }: { bill: ContributingBill }) {
         )}
       </BreakdownDialog>
     </div>
+  );
+}
+
+function SettlementRow({ payment, otherName }: { payment: SettlementHistoryItem; otherName: string }) {
+  const iPaid = payment.direction === "paid-by-me";
+  return (
+    <li className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4">
+      <span
+        className={cn(
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+          iPaid ? "bg-coral/15 text-coral" : "bg-success/15 text-success",
+        )}
+      >
+        {iPaid ? <ArrowUpRight className="h-4 w-4" aria-hidden="true" /> : <ArrowDownLeft className="h-4 w-4" aria-hidden="true" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium">
+          {iPaid ? `You paid ${otherName}` : `${otherName} paid you`}
+        </p>
+        <p className="truncate text-xs text-muted-foreground">
+          {format(new Date(payment.settlementDate), "d MMM yyyy")} · {payment.groupName}
+          {payment.note ? ` · “${payment.note}”` : ""}
+        </p>
+      </div>
+      <span className="tabular-currency flex shrink-0 items-center gap-1.5 text-sm font-semibold">
+        <CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" />
+        {formatPaise(payment.amount)}
+      </span>
+    </li>
   );
 }

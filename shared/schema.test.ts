@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { billItemInputSchema } from "./schema.js";
+import { billItemInputSchema, createSettlementSchema } from "./schema.js";
 
 describe("billItemInputSchema — split validation", () => {
   it("accepts an equal split with no extra fields", () => {
@@ -135,5 +135,30 @@ describe("billItemInputSchema — split validation", () => {
       assignments: [{ memberId: 1, splitType: "percentage" }],
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("createSettlementSchema", () => {
+  const pair = { mode: "pair" as const, groupId: 1, payerMemberId: 2, recipientMemberId: 3, amount: 50000 };
+  it("accepts a valid pair and person settlement", () => {
+    expect(createSettlementSchema.safeParse(pair).success).toBe(true);
+    expect(createSettlementSchema.safeParse({ mode: "person", personId: "u-7", amount: 1, note: "UPI", settlementDate: "2026-01-02" }).success).toBe(true);
+    expect(createSettlementSchema.safeParse({ mode: "person", personId: "m-12", amount: 1 }).success).toBe(true);
+  });
+  it("rejects money that isn't a positive whole number of paise", () => {
+    for (const amount of [0, -100, 12.5, NaN, "500"]) {
+      expect(createSettlementSchema.safeParse({ ...pair, amount }).success).toBe(false);
+    }
+  });
+  it("rejects malformed person ids, bad dates, future dates and over-long notes", () => {
+    expect(createSettlementSchema.safeParse({ mode: "person", personId: "x-1", amount: 1 }).success).toBe(false);
+    expect(createSettlementSchema.safeParse({ mode: "person", personId: "u-", amount: 1 }).success).toBe(false);
+    expect(createSettlementSchema.safeParse({ ...pair, settlementDate: "02/01/2026" }).success).toBe(false);
+    expect(createSettlementSchema.safeParse({ ...pair, settlementDate: "2026-13-45" }).success).toBe(false);
+    expect(createSettlementSchema.safeParse({ ...pair, settlementDate: "2999-01-01" }).success).toBe(false);
+    expect(createSettlementSchema.safeParse({ ...pair, note: "x".repeat(201) }).success).toBe(false);
+  });
+  it("needs a mode", () => {
+    expect(createSettlementSchema.safeParse({ groupId: 1, amount: 100 }).success).toBe(false);
   });
 });

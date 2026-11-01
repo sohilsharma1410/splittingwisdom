@@ -287,6 +287,47 @@ export const insertGroupSchema = createInsertSchema(groups, {
   name: (schema) => schema.min(1, "Group name is required").max(100),
 }).pick({ name: true, coverImage: true });
 
+// ---------------------------------------------------------------------------
+// Settlements. Two ways to record a payment:
+//  - "pair": between two specific members of one group (used by the
+//    simplify-debts suggestions, where payer may not owe recipient directly)
+//  - "person": with someone you share one or more groups with; the server
+//    splits the payment across the groups where the debt actually sits.
+// The amount is always integer paise and is capped server-side at what is
+// owed — never trust the client's cap.
+// ---------------------------------------------------------------------------
+const settlementFields = {
+  amount: z.number().int("Amount must be a whole number of paise").positive("Enter an amount greater than zero"),
+  note: z.string().trim().max(200, "Keep the note under 200 characters").optional(),
+  // YYYY-MM-DD; omitted means today. Future dates make no sense for a payment already made.
+  settlementDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date")
+    .refine((d) => !Number.isNaN(Date.parse(`${d}T12:00:00Z`)), "Use a valid date")
+    .refine((d) => Date.parse(`${d}T00:00:00Z`) <= Date.now() + 36 * 60 * 60 * 1000, "The date can't be in the future")
+    .optional(),
+};
+
+export const createPairSettlementSchema = z.object({
+  mode: z.literal("pair"),
+  groupId: z.number().int().positive(),
+  payerMemberId: z.number().int().positive(),
+  recipientMemberId: z.number().int().positive(),
+  ...settlementFields,
+});
+
+export const createPersonSettlementSchema = z.object({
+  mode: z.literal("person"),
+  /** "u-<userId>" for a registered person, "m-<memberId>" for a name-only member. */
+  personId: z.string().regex(/^[um]-\d+$/, "Choose who you're settling with"),
+  ...settlementFields,
+});
+
+export const createSettlementSchema = z.discriminatedUnion("mode", [
+  createPairSettlementSchema,
+  createPersonSettlementSchema,
+]);
+
 export const selectGroupSchema = createSelectSchema(groups);
 export const selectGroupMemberSchema = createSelectSchema(groupMembers);
 
@@ -435,3 +476,4 @@ export type CreateBillInput = z.infer<typeof createBillSchema>;
 export type UpdateBillInput = z.infer<typeof updateBillSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type CreateSettlementInput = z.infer<typeof createSettlementSchema>;

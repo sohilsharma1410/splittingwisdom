@@ -122,7 +122,7 @@ async function main() {
 
   // --- settlements (added by D2; skipped cleanly if the route doesn't exist yet)
   r = await A.req("GET", `/api/settlements?groupId=${groupId}`);
-  if (r.status !== 404) await settlementChecks({ A, B, C, groupId, aId, bId, mA, mB });
+  if (r.status === 200) await settlementChecks({ A, B, C, groupId, aId, bId, mA, mB });
   else console.log("SKIP  settlements (route not present on this build)");
 
   // --- hardening -------------------------------------------------------------
@@ -153,8 +153,78 @@ async function main() {
   check("after logout /me -> 401", r.status === 401, `status ${r.status}`);
 }
 
-// Filled in alongside the settlements feature.
-async function settlementChecks() {}
+async function settlementChecks({ A, B, C, groupId, aId, bId, mA, mB }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const pair = (payer, recipient, amount, extra = {}) => ({ mode: "pair", groupId, payerMemberId: payer, recipientMemberId: recipient, amount, ...extra });
+  let r = await B.req("GET", `/api/bills`);
+  const bill1 = r.body?.data?.bills?.find((b) => b.groupId === groupId);
+  check("bill is Pending before any payment (derived, not stored)", bill1?.status === "pending", JSON.stringify(bill1?.status));
+
+  // --- validation and authorization -------------------------------------------
+  r = await B.req("POST", "/api/settlements", pair(mB, mA, 0));
+  check("zero amount rejected (400)", r.status === 400, `status ${r.status}`);
+  r = await B.req("POST", "/api/settlements", pair(mB, mA, 12.5));
+  check("fractional paise rejected (400)", r.status === 400, `status ${r.status}`);
+  r = await B.req("POST", "/api/settlements", pair(mB, mA, 500000));
+  check("₹5,000 against a ₹350 balance is rejected (422)", r.status === 422 && /more than is owed/.test(r.body?.error?.message ?? ""), JSON.stringify(r));
+  r = await C.req("POST", "/api/settlements", pair(mB, mA, 100));
+  check("outsider can't record a settlement in the group (404)", r.status === 404, `status ${r.status}`);
+  r = await A.req("POST", "/api/settlements", pair(mA, mB, 100));
+  check("paying someone who owes you is rejected (422)", r.status === 422, `status ${r.status}`);
+  r = await B.req("POST", "/api/settlements", pair(mB, mA, 100, { settlementDate: "2999-01-01" }));
+  check("future-dated settlement rejected (400)", r.status === 400, `status ${r.status}`);
+  r = await C.req("GET", `/api/settlements?groupId=${groupId}`);
+  check("outsider can't read the group's settlements (404)", r.status === 404, `status ${r.status}`);
+
+  // --- partial payment: ₹150 of ₹350 -> ₹200 left everywhere -------------------
+  r = await B.req("POST", "/api/settlements", pair(mB, mA, 15000, { note: "UPI part 1", settlementDate: today }));
+  check("partial settlement ₹150 -> 201", r.status === 201 && r.body?.data?.settlements?.length === 1, JSON.stringify(r));
+  r = await B.req("GET", "/api/balances");
+  check("B now owes ₹200 (net -20000)", r.body?.data?.netBalance === -20000, JSON.stringify(r.body?.data));
+  r = await A.req("GET", "/api/balances");
+  check("A is now owed ₹200 (net +20000)", r.body?.data?.netBalance === 20000, JSON.stringify(r.body?.data));
+  r = await B.req("POST", "/api/settlements", pair(mB, mA, 20001));
+  check("one paisa over the remaining ₹200 is rejected (422)", r.status === 422, `status ${r.status}`);
+
+  // --- full settlement through the person flow ----------------------------------
+  r = await B.req("POST", "/api/settlements", { mode: "person", personId: `u-${aId}`, amount: 20000, note: "UPI part 2" });
+  check("person-mode settlement of the remaining ₹200 -> 201", r.status === 201, JSON.stringify(r));
+  r = await B.req("GET", "/api/balances");
+  check("pair is settled: B net balance 0", r.body?.data?.netBalance === 0 && r.body?.data?.unsettledCount === 0, JSON.stringify(r.body?.data));
+  r = await B.req("POST", "/api/settlements", { mode: "person", personId: `u-${aId}`, amount: 1 });
+  check("nothing left to pay -> 422", r.status === 422, `status ${r.status}`);
+  r = await B.req("GET", "/api/bills");
+  check("the bill now shows Settled", r.body?.data?.bills?.find((b) => b.groupId === groupId)?.status === "settled", JSON.stringify(r.body?.data?.bills?.map((b) => b.status)));
+
+  // --- a new bill re-accumulates; 10 simultaneous payments, exactly one wins ----
+  r = await A.req("POST", "/api/bills", {
+    groupId, description: "QA coffee", billDate: today, subtotalAmount: 20000, taxAmount: 0, tipAmount: 0, serviceFeeAmount: 0, discountAmount: 0, paidByMemberId: mA,
+    items: [{ name: "Coffee", price: 20000, quantity: 1, assignments: [{ memberId: mA, splitType: "equal" }, { memberId: mB, splitType: "equal" }] }],
+  });
+  check("new bill re-creates a ₹100 debt", r.status === 201, JSON.stringify(r).slice(0, 200));
+  r = await B.req("GET", "/api/balances");
+  check("B owes ₹100 again", r.body?.data?.netBalance === -10000, JSON.stringify(r.body?.data));
+  const race = await Promise.all(Array.from({ length: 10 }, () => B.req("POST", "/api/settlements", pair(mB, mA, 10000))));
+  const won = race.filter((x) => x.status === 201).length, refused = race.filter((x) => x.status === 422).length;
+  check("10 simultaneous ₹100 payments of a ₹100 debt: exactly one succeeds, nine refused", won === 1 && refused === 9, `201s=${won} 422s=${refused} others=${race.map((x) => x.status)}`);
+  r = await B.req("GET", "/api/balances");
+  check("balance is exactly 0 after the race (no overpayment)", r.body?.data?.netBalance === 0, JSON.stringify(r.body?.data));
+
+  // --- history and the explanation -------------------------------------------
+  r = await A.req("GET", `/api/settlements?groupId=${groupId}`);
+  const hist = r.body?.data?.settlements ?? [];
+  check("group history has exactly the 3 successful payments, newest first", hist.length === 3 && hist.reduce((s, x) => s + x.amount, 0) === 45000, JSON.stringify(hist.map((x) => x.amount)));
+  r = await B.req("GET", `/api/balances/u-${aId}`);
+  const d = r.body?.data;
+  check("balance detail: bills ₹450 owed, ₹450 settled, ₹0 outstanding", d?.billsNet === -45000 && d?.settlementsNet === 45000 && d?.netAmount === 0, JSON.stringify({ billsNet: d?.billsNet, settlementsNet: d?.settlementsNet, netAmount: d?.netAmount }));
+  check("balance detail lists the payments with notes and direction", d?.settlements?.length === 3 && d.settlements.every((x) => x.direction === "paid-by-me") && d.settlements.some((x) => x.note === "UPI part 1"), JSON.stringify(d?.settlements));
+  r = await A.req("GET", `/api/balances/u-${bId}`);
+  check("same history from A's side reads as paid-to-me", r.body?.data?.settlements?.every((x) => x.direction === "paid-to-me") && r.body?.data?.netAmount === 0, JSON.stringify(r.body?.data?.settlements?.map((x) => x.direction)));
+  r = await C.req("GET", `/api/balances/u-${aId}`);
+  check("outsider gets no balance detail for A (404)", r.status === 404, `status ${r.status}`);
+  r = await B.req("GET", "/api/bills");
+  check("all bills Settled once everything is paid", r.body?.data?.bills?.filter((b) => b.groupId === groupId).every((b) => b.status === "settled"), JSON.stringify(r.body?.data?.bills?.map((b) => b.status)));
+}
 
 await main().catch((e) => { console.error("FATAL", e); failures++; });
 console.log(`\n${results.length - failures}/${results.length} checks passed against ${BASE}`);

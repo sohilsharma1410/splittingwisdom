@@ -83,10 +83,29 @@ test.describe("PWA basics", () => {
   });
 });
 
+/** The failover logic is compiled into the client; check this build actually has it. */
+async function buildHasFailoverConfig(): Promise<boolean> {
+  const html = await fetch(`${PRIMARY}/index.html`).then((r) => r.text());
+  const script = /src="(\/assets\/[^"]+\.js)"/.exec(html)?.[1];
+  if (!script) return false;
+  const js = await fetch(`${PRIMARY}${script}`).then((r) => r.text());
+  return js.includes(new URL(STANDBY).origin);
+}
+
 test.describe("failover and failback", () => {
   test.skip(!PIDFILE || !START_CMD, "needs E2E_PRIMARY_API_PIDFILE and E2E_PRIMARY_API_START");
 
+  // Whatever happens, never leave the primary stopped for the specs after this one.
+  test.afterEach(async () => {
+    const up = await fetch(`${PRIMARY}/api/health`).then((r) => r.ok).catch(() => false);
+    if (!up) {
+      execSync(START_CMD!, { stdio: "ignore" });
+      await waitForHealth(PRIMARY, true, 45_000);
+    }
+  });
+
   test("primary down -> opens backup; back up -> returns; no ping-pong", async ({ page }) => {
+    test.skip(!(await buildHasFailoverConfig()), `client build lacks VITE_PRIMARY_URL=${PRIMARY} / VITE_STANDBY_URL=${STANDBY}; rebuild with them (scripts/e2e-local.sh does)`);
     await waitForHealth(PRIMARY, true);
     await waitForHealth(STANDBY, true);
 

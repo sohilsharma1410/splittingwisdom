@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { SettleButton } from "@/components/settlements/settle-button";
 import { format } from "date-fns";
 import { Scale, TrendingUp, TrendingDown, CheckCircle2 } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -18,10 +19,12 @@ function BalanceCard({ balance }: { balance: BalanceSummaryItem }) {
   const isSettled = balance.netAmount === 0;
 
   return (
-    <Link
-      href={`/balance/${balance.personId}`}
-      className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4 pr-20 transition-shadow hover:shadow-md md:pr-4"
-    >
+    <div className="relative flex items-center gap-3 rounded-xl border border-border bg-surface p-4 pr-20 transition-shadow hover:shadow-md md:pr-4">
+      <Link
+        href={`/balance/${balance.personId}`}
+        aria-label={`View balance with ${balance.displayName}`}
+        className="absolute inset-0 rounded-xl"
+      />
       <InitialsAvatar name={balance.displayName} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{balance.displayName}</p>
@@ -50,8 +53,15 @@ function BalanceCard({ balance }: { balance: BalanceSummaryItem }) {
         <span className="text-xs text-muted-foreground">
           {isSettled ? "" : isOwedToMe ? "owes you" : "you owe"}
         </span>
+        {!isSettled && (
+          <SettleButton
+            personId={balance.personId}
+            displayName={balance.displayName}
+            netAmount={balance.netAmount}
+          />
+        )}
       </div>
-    </Link>
+    </div>
   );
 }
 

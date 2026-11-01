@@ -23,6 +23,7 @@ import { getMembership } from "../middleware/authorize.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { isSupportedReceiptMimeType, uploadReceiptImage, getReceiptSignedUrl } from "../lib/storage.js";
 import { extractReceipt } from "../lib/gemini.js";
+import { loadBillStatuses } from "../lib/bill-status.js";
 
 const MAX_RECEIPT_IMAGE_BYTES = 10 * 1024 * 1024;
 const receiptUpload = multer({
@@ -218,6 +219,8 @@ router.get("/", async (req, res) => {
     orderBy: (b, { desc }) => [desc(b.createdAt)],
   });
 
+  const statuses = await loadBillStatuses([...new Set(allBills.map((b) => b.groupId))]);
+
   const result = allBills.map((bill) => {
     const breakdown = buildBreakdownResponse(bill.items, bill);
     const myMemberId = myMemberIdByGroup.get(bill.groupId);
@@ -235,7 +238,7 @@ router.get("/", async (req, res) => {
       itemCount: bill.items.length,
       unassignedItemCount: bill.items.length - assignedItemCount,
       paidByName: bill.paidBy.displayName,
-      status: bill.status,
+      status: statuses.get(bill.id) ?? "pending",
       hasReceipt: bill.receiptImageUrl !== null,
       myShare,
       createdAt: bill.createdAt,
@@ -445,6 +448,7 @@ router.get("/:id", async (req, res) => {
       : Promise.resolve(null),
   ]);
 
+  const statuses = await loadBillStatuses([bill.groupId]);
   const items = buildItemsResponse(bill.items);
   const breakdown = buildBreakdownResponse(bill.items, bill);
   const itemsSubtotal = bill.items.reduce((sum, item) => sum + item.price, 0);
@@ -470,7 +474,7 @@ router.get("/:id", async (req, res) => {
         grandTotal: billGrandTotal(bill),
         paidByMemberId: bill.paidByMemberId,
         paidByName: bill.paidBy.displayName,
-        status: bill.status,
+        status: statuses.get(bill.id) ?? "pending",
         createdByName: createdBy?.displayName ?? "Someone",
         lastEditedByName: lastEditedBy?.displayName ?? null,
         lastEditedAt: bill.lastEditedAt,

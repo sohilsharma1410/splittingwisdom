@@ -10,6 +10,7 @@ import groupsRouter from "./routes/groups.js";
 import billsRouter from "./routes/bills.js";
 import balancesRouter from "./routes/balances.js";
 import usersRouter from "./routes/users.js";
+import settlementsRouter from "./routes/settlements.js";
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -59,6 +60,7 @@ app.use("/api/groups", groupsRouter);
 app.use("/api/bills", billsRouter);
 app.use("/api/balances", balancesRouter);
 app.use("/api/users", usersRouter);
+app.use("/api/settlements", settlementsRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ error: { message: "Not found." } });

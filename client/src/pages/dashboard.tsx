@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { SettleButton } from "@/components/settlements/settle-button";
 import { format } from "date-fns";
 import { LayoutDashboard, Users, Receipt, TrendingUp, TrendingDown, CheckCircle2, AlertTriangle } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -169,25 +170,32 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-1.5">
                 {topBalances.map((b) => (
-                  <Link
+                  <div
                     key={b.personId}
-                    href={`/balance/${b.personId}`}
-                    className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3 pr-20 hover:shadow-md md:pr-3"
+                    className="relative flex items-center gap-3 rounded-lg border border-border bg-surface p-3 pr-20 hover:shadow-md md:pr-3"
                   >
+                    <Link
+                      href={`/balance/${b.personId}`}
+                      aria-label={`View balance with ${b.displayName}`}
+                      className="absolute inset-0 rounded-lg"
+                    />
                     <InitialsAvatar name={b.displayName} className="h-8 w-8 text-xs" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{b.displayName}</p>
                       <p className="text-xs text-muted-foreground">{b.netAmount > 0 ? "owes you" : "you owe"}</p>
                     </div>
-                    <span
-                      className={cn(
-                        "tabular-currency shrink-0 text-sm font-semibold",
-                        b.netAmount > 0 ? "text-success" : "text-coral",
-                      )}
-                    >
-                      {formatPaise(Math.abs(b.netAmount))}
-                    </span>
-                  </Link>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span
+                        className={cn(
+                          "tabular-currency text-sm font-semibold",
+                          b.netAmount > 0 ? "text-success" : "text-coral",
+                        )}
+                      >
+                        {formatPaise(Math.abs(b.netAmount))}
+                      </span>
+                      <SettleButton personId={b.personId} displayName={b.displayName} netAmount={b.netAmount} />
+                    </div>
+                  </div>
                 ))}
               </div>
             )}

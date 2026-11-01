@@ -14,6 +14,7 @@ import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireGroupMember } from "../middleware/authorize.js";
 import { computeGroupBalances, memberNetBalance } from "../lib/group-balance.js";
+import { loadBillStatuses } from "../lib/bill-status.js";
 import { isForeignKeyViolation, isUniqueViolation } from "../lib/pg-errors.js";
 
 const router = Router();
@@ -155,6 +156,8 @@ router.get("/:id/bills", requireGroupMember("id"), async (req, res) => {
     orderBy: (b, { desc }) => [desc(b.createdAt)],
   });
 
+  const statuses = await loadBillStatuses([res.locals.groupId!]);
+
   res.json({
     data: {
       bills: groupBills.map((b) => ({
@@ -164,7 +167,7 @@ router.get("/:id/bills", requireGroupMember("id"), async (req, res) => {
         billDate: b.billDate,
         grandTotal: billGrandTotal(b),
         paidByName: b.paidBy.displayName,
-        status: b.status,
+        status: statuses.get(b.id) ?? "pending",
         createdAt: b.createdAt,
       })),
     },
