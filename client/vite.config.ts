@@ -73,6 +73,9 @@ export default defineConfig({
   // `vite preview` of a production build has no API behind it; this lets it
   // behave like the real deployments, where /api is served from the same origin.
   preview: {
+    // Lets scripts/phone-test.sh reach this local preview through a tunnel's hostname.
+    // `vite preview` is only ever run locally for testing, never in production.
+    allowedHosts: true,
     proxy: { "/api": process.env.PREVIEW_API_URL ?? "http://localhost:4000" },
   },
   test: {

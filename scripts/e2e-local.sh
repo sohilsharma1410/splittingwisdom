@@ -20,8 +20,8 @@ export DB_URL
 started=()
 cleanup() {
   for f in "${started[@]:-}"; do
-    [ -n "$f" ] && [ -f "$f" ] && kill "$(cat "$f")" 2>/dev/null || true
-    [ -n "$f" ] && pkill -P "$(cat "$f" 2>/dev/null || echo 0)" 2>/dev/null || true
+    # Children first: killing the npm wrapper first would orphan the real server process.
+    [ -n "$f" ] && [ -f "$f" ] && { pkill -P "$(cat "$f")" 2>/dev/null || true; kill "$(cat "$f")" 2>/dev/null || true; }
   done
 }
 trap cleanup EXIT
