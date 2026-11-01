@@ -10,7 +10,7 @@ import billsRouter from "./routes/bills.js";
 import balancesRouter from "./routes/balances.js";
 import usersRouter from "./routes/users.js";
 
-const app = express();
+export const app = express();
 const PORT = process.env.PORT ?? 4000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
 
@@ -66,6 +66,10 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
 };
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`SplittingWisdom API listening on port ${PORT}`);
-});
+// Integration tests (vitest sets VITEST) import `app` and drive it with
+// supertest on an ephemeral port instead of binding PORT.
+if (!process.env.VITEST) {
+  app.listen(PORT, () => {
+    console.log(`SplittingWisdom API listening on port ${PORT}`);
+  });
+}
