@@ -52,6 +52,10 @@
 | D9 | PWA replaces Capacitor APK (Phase 6 §3 dropped) | 2026-11-01 | Assumption — owner may veto |
 | D10 | Roadmap order after infra: settlements → OCR → voice | 2026-11-01 | Assumption — owner may veto |
 | D11 | Continuous **one-way** copy Pi → Supabase is kept as the backup (Supabase never accepts writes in normal operation; Pi stays sole source of truth) | 2026-11-01 | Owner confirmed: data not highly confidential at this stage |
+| D13 | Pi host: Tailscale on the host, not in a container; API published on `127.0.0.1:4000` only | 2026-11-01 | Replaces the P2.3 container and `TS_AUTHKEY`. Docker-published ports bypass ufw |
+| D14 | Pi runs the 4K-page kernel (`kernel=kernel8.img`) | 2026-11-01 | The default 16K kernel can break software built for 4K pages |
+| D15 | Pi SSH stays on password login for now | 2026-11-01 | Owner decision; leaves P1.1 open. SSH is limited to LAN + tailnet |
+| D16 | Postgres keeps the default `wal_level` | 2026-11-01 | Sync uses the outbox (spike S2.1), so `logical` from P2.1 isn't needed; less WAL means less SD wear |
 | D12 | Pi ships **all** logs (success + failure) to Supabase, event-based micro-batched; **no deletion for the first ≥ 14 days**, retention module built later only if needed | 2026-11-01 | See P8; free-tier limits evaluated there |
 
 ---
@@ -129,19 +133,19 @@ The Pi cannot detect or announce its own death. The standby side must be the obs
 > Goal: everything that works on Vercel/Render/Supabase today works, unchanged, on the Pi — then survives reboots and power cuts.
 
 ### P0 — Prerequisites (HUMAN)
-- [ ] P0.1 Confirm Pi state: OS installed? hostname? SSH works? (default plan assumes a fresh **Raspberry Pi OS Lite 64-bit (Bookworm)**).
-- [ ] P0.2 Tailscale account exists; decide tailnet name. Enable **HTTPS** and **Funnel** for the tailnet (admin console → DNS → HTTPS; Access controls → `nodeAttrs` `funnel`).
+- [x] P0.1 Confirm Pi state: OS installed? hostname? SSH works? (default plan assumes a fresh **Raspberry Pi OS Lite 64-bit (Bookworm)**).
+- [x] P0.2 Tailscale account exists; decide tailnet name. Enable **HTTPS** and **Funnel** for the tailnet (admin console → DNS → HTTPS; Access controls → `nodeAttrs` `funnel`).
 - [ ] P0.3 Use a **high-endurance microSD** (A2/“endurance” class) if possible — cheapest risk reduction without new hardware categories.
 - [ ] P0.4 Stable power: plug into a good PSU (official 27 W), not a flaky charger/strip.
 - [ ] P0.5 Decide notification channel for alerts (email via GitHub Actions already exists; optional: ntfy.sh/Telegram).
 
 ### P1 — OS setup & hardening (HUMAN with CLAUDE-provided script)
 - [ ] P1.1 Flash OS, enable SSH key auth only, disable password login, set timezone `Asia/Kolkata`, enable **NTP** (time skew breaks sync ordering).
-- [ ] P1.2 `ufw`: deny all inbound except SSH from LAN/Tailscale (Funnel does not need open inbound ports).
-- [ ] P1.3 `unattended-upgrades` for security patches; **no auto-reboot during peak** (schedule 04:00).
-- [ ] P1.4 Reduce SD wear: `log2ram` or `journald` Storage=volatile + persistent logs only for errors; `noatime` mount; disable swap or use `zram`.
-- [ ] P1.5 Enable the **hardware watchdog** (`RuntimeWatchdogSec`) so a hung Pi reboots itself.
-- [ ] P1.6 Install Docker Engine + Compose plugin (arm64).
+- [x] P1.2 `ufw`: deny all inbound except SSH from LAN/Tailscale (Funnel does not need open inbound ports).
+- [x] P1.3 `unattended-upgrades` for security patches; **no auto-reboot during peak** (schedule 04:00).
+- [x] P1.4 Reduce SD wear: `log2ram` or `journald` Storage=volatile + persistent logs only for errors; `noatime` mount; disable swap or use `zram`.
+- [x] P1.5 Enable the **hardware watchdog** (`RuntimeWatchdogSec`) so a hung Pi reboots itself.
+- [x] P1.6 Install Docker Engine + Compose plugin (arm64).
 
 ### P2 — Containerised stack (CLAUDE)
 File layout (new, on `dev-pi`): `deploy/pi/docker-compose.yml`, `deploy/pi/.env.example`, `deploy/pi/Dockerfile.api`, `deploy/pi/README.md`.
@@ -150,17 +154,17 @@ File layout (new, on `dev-pi`): `deploy/pi/docker-compose.yml`, `deploy/pi/.env.
 - [ ] P2.2 `api` container: multi-stage build of `shared` → `server` → `client`, Node 22 on arm64. **Express serves the built client** (`client/dist`) with SPA fallback, so one origin serves PWA + API (also removes CORS need on the Pi).
 - [ ] P2.3 `tailscale` container (or host install) with `TS_AUTHKEY` (reusable, **tagged**, key expiry **disabled** for this node), `tailscale serve` → `localhost:4000`, `tailscale funnel 443 on`.
 - [ ] P2.4 `restart: unless-stopped` on every service; `depends_on` with health checks; systemd unit to `docker compose up -d` on boot.
-- [ ] P2.5 `/api/health` (liveness, no DB), `/api/health/db` (query), new `/api/health/role` returning `{role, active, lastSyncAt, lagSeconds}`.
-- [ ] P2.6 Graceful shutdown (SIGTERM → stop accepting → drain → close pool) so `docker stop`/shutdown never kills mid-transaction.
+- [x] P2.5 `/api/health` (liveness, no DB), `/api/health/db` (query), new `/api/health/role` returning `{role, active, lastSyncAt, lagSeconds}`.
+- [x] P2.6 Graceful shutdown (SIGTERM → stop accepting → drain → close pool) so `docker stop`/shutdown never kills mid-transaction.
 
 ### P3 — Code changes required for the Pi (CLAUDE)
-- [ ] P3.1 **DB TLS config via env.** `session.ts` currently hard-codes `ssl:{rejectUnauthorized:false}`. Introduce `DATABASE_SSL=on|off` (Pi=off for local socket/host network; Supabase=on). Same for `db.ts`. Keep `prepare:false` only when `DATABASE_POOLER=true` (Supabase pooler); enable prepared statements locally.
-- [ ] P3.2 **Storage driver abstraction** (`server/src/lib/storage.ts`): `STORAGE_DRIVER=local|supabase`. `local` writes under `RECEIPTS_DIR` (volume), serves via **authenticated** route streaming the file (no public path; keeps "private + short-lived access" rule via signed, expiring route tokens). Same function signatures (`uploadReceiptImage`, `getReceiptSignedUrl`, `deleteReceiptImage`, `listReceiptImagePaths`).
-- [ ] P3.3 **Static client serving + SPA fallback** in Express (only when `SERVE_CLIENT=true`).
-- [ ] P3.4 **Role awareness:** env `APP_ROLE=primary|standby`; middleware `requireWritable` on every mutating route returning `503 {error:{message:"Read-only: backup mode switching"}}` when the node is not currently writable (S3).
+- [x] P3.1 **DB TLS config via env.** `session.ts` currently hard-codes `ssl:{rejectUnauthorized:false}`. Introduce `DATABASE_SSL=on|off` (Pi=off for local socket/host network; Supabase=on). Same for `db.ts`. Keep `prepare:false` only when `DATABASE_POOLER=true` (Supabase pooler); enable prepared statements locally.
+- [x] P3.2 **Storage driver abstraction** (`server/src/lib/storage.ts`): `STORAGE_DRIVER=local|supabase`. `local` writes under `RECEIPTS_DIR` (volume), serves via **authenticated** route streaming the file (no public path; keeps "private + short-lived access" rule via signed, expiring route tokens). Same function signatures (`uploadReceiptImage`, `getReceiptSignedUrl`, `deleteReceiptImage`, `listReceiptImagePaths`).
+- [x] P3.3 **Static client serving + SPA fallback** in Express (only when `SERVE_CLIENT=true`).
+- [x] P3.4 **Role awareness:** env `APP_ROLE=primary|standby`; middleware `requireWritable` on every mutating route returning `503 {error:{message:"Read-only: backup mode switching"}}` when the node is not currently writable (S3).
 - [ ] P3.5 Cookie/proxy settings verified behind Funnel: `trust proxy`, `secure` cookie, `sameSite=lax`. Same `SESSION_SECRET` on Pi and Render (so replicated session rows validate).
-- [ ] P3.6 `.env.example` per role (see Appendix B). No secrets committed.
-- [ ] P3.7 Dependency hardening (also D0): `npm audit fix`, re-run tests.
+- [x] P3.6 `.env.example` per role (see Appendix B). No secrets committed.
+- [x] P3.7 Dependency hardening (also D0): `npm audit fix`, re-run tests.
 
 ### P4 — Data migration: Supabase → Pi (HUMAN-run, CLAUDE-scripted)
 Scale is tiny (11 MB), so use dump/restore with a short freeze.
@@ -180,7 +184,7 @@ Scale is tiny (11 MB), so use dump/restore with a short freeze.
 - [ ] P4.8 "Other data required to run locally": env files, `SESSION_SECRET` (copy from Render), Gemini key, Tailscale auth key, drizzle migrations — all listed in Appendix B.
 
 ### P5 — Tailscale & PWA exposure (HUMAN + CLAUDE)
-- [ ] P5.1 Install/auth Tailscale on the Pi with a tag (e.g. `tag:server`); **disable key expiry** for the node.
+- [x] P5.1 Install/auth Tailscale on the Pi with a tag (e.g. `tag:server`); **disable key expiry** for the node.
 - [ ] P5.2 ACL: only the owner's devices get SSH/admin; Funnel exposes **only** `https:443 → localhost:4000`.
 - [ ] P5.3 Verify `https://<pi>.<tailnet>.ts.net` serves the app with a valid cert, installs as PWA on Android Chrome and iOS Safari (needs D1).
 - [ ] P5.4 Document Funnel constraints: ports 443/8443/10000 only; bandwidth is limited (undisclosed) — fine at friend-group scale; monitor.
@@ -513,8 +517,8 @@ pg_restore --data-only --disable-triggers -d "$PI_DATABASE_URL" data.dump
 SELECT setval(pg_get_serial_sequence('bills','id'), COALESCE(MAX(id),1)) FROM bills;
 
 # Tailscale
-tailscale up --authkey "$TS_AUTHKEY" --ssh --advertise-tags=tag:server
-tailscale serve --bg 4000 && tailscale funnel --bg 443 on   # exact flags vary by version
+sudo tailscale up --advertise-tags=tag:server
+sudo tailscale funnel --bg --https=443 localhost:4000
 
 # Health
 curl -s https://<pi>.<tailnet>.ts.net/api/health/db
@@ -564,6 +568,7 @@ curl -s https://<pi>.<tailnet>.ts.net/api/health/role
 | 2026-11-01 | `61a81c4` | **D1** PWA: manifest/icons/service worker, client failover (`client/src/lib/failover.ts`, 23 unit tests), install help, health CORS |
 | 2026-11-01 | `52b902f` | **D2a** settlements: rules in `shared/lib/settlement.ts`, `POST/GET /api/settlements`, dialog, history, derived bill status |
 | 2026-11-01 | (this one) | **D2b/D2c** simplify-debts view, onboarding, motion pass, a11y fixes (contrast tokens, names, pre-paint theme) |
+| 2026-11-01 | (branch `dev-pi-p`) | **P3 + P2 code** `DATABASE_SSL`/`DATABASE_POOLER`, local receipts (`STORAGE_DRIVER`), `SERVE_CLIENT`, graceful shutdown, `server/src/migrate.ts`, `deploy/pi/`. P2.1–P2.4 stay open until `deploy/pi/smoke.sh` passes on the Pi |
 
 **Still open in D2:** D2.1's `Idempotency-Key` handling and `requireWritable` are deliberately *not* wired yet — they land with workstream S (S6.1 / S3). The client already sends the key.
 

@@ -3,6 +3,8 @@
 Exact click-by-click steps for the three free-tier services this app uses:
 **Supabase** (Postgres), **Render** (Express API), **Vercel** (React client).
 
+The Raspberry Pi primary has its own guide: [deploy/pi/README.md](deploy/pi/README.md).
+
 Do these in order — each later step needs a value produced by an earlier one.
 
 ---

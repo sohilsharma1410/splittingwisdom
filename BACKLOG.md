@@ -15,3 +15,11 @@ Bill Settled/Pending is now derived from bills + settlements (`shared/lib/settle
 ## Settlements between people who aren't directly in debt (simplify-debts payments)
 
 The server accepts a payment A→C when A owes B and B owes C, up to the payer's overall debt and the recipient's overall credit (needed so "simplify debts" suggestions can be followed). The pairwise ledger then shows C owing A, which nets to zero in everyone's overall position but can look odd in the per-person view. Revisit the presentation once real groups use it.
+
+## Content-Security-Policy for the Pi-served client
+
+Express now serves the web app on the Pi with helmet's CSP still off. A real policy is worthwhile, but needs testing against the service worker and Google Fonts. `client/public/theme-init.js` is already a separate file, so no inline scripts are needed.
+
+## Compress responses from the Pi
+
+Express serves the client uncompressed, and Funnel's bandwidth is limited. If the first load feels slow, pre-compress the build or add a compression step.
