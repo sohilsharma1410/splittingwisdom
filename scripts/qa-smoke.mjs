@@ -177,8 +177,16 @@ async function settlementChecks({ A, B, C, groupId, aId, bId, mA, mB }) {
   check("outsider can't read the group's settlements (404)", r.status === 404, `status ${r.status}`);
 
   // --- partial payment: ₹150 of ₹350 -> ₹200 left everywhere -------------------
-  r = await B.req("POST", "/api/settlements", pair(mB, mA, 15000, { note: "UPI part 1", settlementDate: today }));
+  const partialKey = `qa-${RUN}-partial`;
+  const partialBody = pair(mB, mA, 15000, { note: "UPI part 1", settlementDate: today });
+  r = await B.req("POST", "/api/settlements", partialBody, { "Idempotency-Key": partialKey });
   check("partial settlement ₹150 -> 201", r.status === 201 && r.body?.data?.settlements?.length === 1, JSON.stringify(r));
+  // The same request retried (double tap, lost response) must be the same payment, not a second one.
+  const retry = await B.req("POST", "/api/settlements", partialBody, { "Idempotency-Key": partialKey });
+  check("retry with the same Idempotency-Key replays the same settlement (no second payment)",
+    retry.status === 201 && retry.body?.data?.settlements?.[0]?.id === r.body?.data?.settlements?.[0]?.id, JSON.stringify({ retry: retry.status }));
+  const reused = await B.req("POST", "/api/settlements", pair(mB, mA, 2000), { "Idempotency-Key": partialKey });
+  check("same key with a different amount is rejected (422)", reused.status === 422, `status ${reused.status}`);
   r = await B.req("GET", "/api/balances");
   check("B now owes ₹200 (net -20000)", r.body?.data?.netBalance === -20000, JSON.stringify(r.body?.data));
   r = await A.req("GET", "/api/balances");

@@ -21,6 +21,7 @@ import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getMembership } from "../middleware/authorize.js";
 import { rateLimit } from "../middleware/rate-limit.js";
+import { idempotency } from "../middleware/idempotency.js";
 import { isSupportedReceiptMimeType, uploadReceiptImage, getReceiptSignedUrl } from "../lib/storage.js";
 import { extractReceipt } from "../lib/gemini.js";
 import { loadBillStatuses } from "../lib/bill-status.js";
@@ -260,7 +261,7 @@ router.get("/", async (req, res) => {
   res.json({ data: { bills: result } });
 });
 
-router.post("/", async (req, res) => {
+router.post("/", idempotency(), async (req, res) => {
   const parsed = createBillSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: { message: parsed.error.issues[0].message } });

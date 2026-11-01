@@ -67,7 +67,7 @@ export async function probeHealth(baseUrl: string, options: ProbeOptions = {}): 
 /**
  * Is the primary reachable AND safe to go back to? Reachable alone isn't
  * enough: after an outage the Pi must finish copying the standby's changes
- * back before it is the active primary, or users would land on stale data.
+ * back before it is writable again, or users would land on stale data.
  * Servers without the role endpoint (404) are judged on plain health.
  */
 export async function probePrimaryReady(baseUrl: string, options: ProbeOptions = {}): Promise<boolean> {
@@ -76,8 +76,11 @@ export async function probePrimaryReady(baseUrl: string, options: ProbeOptions =
     const res = await getWithTimeout(`${base}/api/health/role`, options);
     if (res.status === 404) return probeHealth(base, options);
     if (!res.ok) return false;
-    const body = (await res.json()) as { data?: { active?: string } };
-    return body?.data?.active === "pi";
+    // Contract (server/src/routes/health.ts): `writable` is true only when THIS node
+    // is the one currently allowed to take writes — i.e. it is the active primary and
+    // not mid-cutover or still catching up. `role` is "primary" | "standby" | "standalone".
+    const body = (await res.json()) as { data?: { writable?: boolean; role?: string } };
+    return body?.data?.writable === true && body?.data?.role !== "standby";
   } catch {
     return false;
   }

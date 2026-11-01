@@ -58,12 +58,15 @@ describe("probeHealth", () => {
 });
 
 describe("probePrimaryReady", () => {
-  it("is ready only once the Pi is the active primary", async () => {
-    expect(await probePrimaryReady("https://x", { fetchFn: async () => json(200, { data: { active: "pi" } }) })).toBe(true);
+  it("is ready only once the node is the active primary and writable", async () => {
+    expect(await probePrimaryReady("https://x", { fetchFn: async () => json(200, { data: { role: "primary", writable: true, activePrimary: "pi" } }) })).toBe(true);
+    expect(await probePrimaryReady("https://x", { fetchFn: async () => json(200, { data: { role: "standalone", writable: true } }) })).toBe(true);
   });
-  it("is NOT ready while the standby is still active or mid-cutover", async () => {
-    expect(await probePrimaryReady("https://x", { fetchFn: async () => json(200, { data: { active: "standby" } }) })).toBe(false);
-    expect(await probePrimaryReady("https://x", { fetchFn: async () => json(200, { data: { active: "cutover" } }) })).toBe(false);
+  it("is NOT ready while recovering, mid-cutover, read-only, or while the standby is the active one", async () => {
+    expect(await probePrimaryReady("https://x", { fetchFn: async () => json(200, { data: { role: "primary", writable: false, activePrimary: "cutover" } }) })).toBe(false);
+    expect(await probePrimaryReady("https://x", { fetchFn: async () => json(200, { data: { role: "primary", writable: false, activePrimary: "standby" } }) })).toBe(false);
+    expect(await probePrimaryReady("https://x", { fetchFn: async () => json(200, { data: { role: "standby", writable: true } }) })).toBe(false);
+    expect(await probePrimaryReady("https://x", { fetchFn: async () => json(200, { data: {} }) })).toBe(false);
   });
   it("falls back to plain health when the role endpoint doesn't exist yet (404)", async () => {
     const fetchFn = vi.fn(async (url: string) => (url.endsWith("/role") ? json(404) : json(200, {})));

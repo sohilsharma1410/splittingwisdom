@@ -30,7 +30,7 @@ init() {
   cat >> "$DATA/postgresql.conf" <<EOF
 port = $PORT
 listen_addresses = '127.0.0.1'
-unix_socket_directories = '$DATA'
+unix_socket_directories = ''
 ssl = on
 ssl_cert_file = 'server.crt'
 ssl_key_file = 'server.key'

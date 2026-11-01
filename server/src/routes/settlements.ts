@@ -13,6 +13,7 @@ import {
 } from "@splittingwisdom/shared";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { idempotency } from "../middleware/idempotency.js";
 import { getMembership } from "../middleware/authorize.js";
 import { computeGroupBalances } from "../lib/group-balance.js";
 import { resolvePersonTargets } from "../lib/person.js";
@@ -46,7 +47,7 @@ const reject = (status: number, message: string): Rejection => ({ rejected: { st
 // ---------------------------------------------------------------------------
 // POST /api/settlements — record a payment (full or partial)
 // ---------------------------------------------------------------------------
-router.post("/", async (req, res) => {
+router.post("/", idempotency(), async (req, res) => {
   const parsed = createSettlementSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: { message: parsed.error.issues[0].message } });

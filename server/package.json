@@ -9,7 +9,12 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "sync:agent": "tsx src/sync/agent.ts",
+    "sync:agent:prod": "node dist/sync/agent.js",
+    "verify:integrity": "tsx ../scripts/verify-integrity.ts",
+    "test": "vitest run --config vitest.config.ts --passWithNoTests",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@google/genai": "^2.21.0",
@@ -36,8 +41,11 @@
     "@types/express-session": "^1.19.0",
     "@types/multer": "^2.2.0",
     "@types/node": "^26.2.0",
+    "@types/supertest": "^7.2.1",
     "drizzle-kit": "^0.31.10",
+    "supertest": "^7.3.1",
     "tsx": "^4.23.12",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.12"
   }
 }

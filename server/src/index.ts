@@ -11,8 +11,9 @@ import billsRouter from "./routes/bills.js";
 import balancesRouter from "./routes/balances.js";
 import usersRouter from "./routes/users.js";
 import settlementsRouter from "./routes/settlements.js";
+import { installRoleFencing } from "./roles/install.js";
 
-const app = express();
+export const app = express();
 const PORT = process.env.PORT ?? 4000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
 
@@ -55,6 +56,10 @@ app.get("/api/health/db", async (_req, res) => {
   }
 });
 
+// Roles & fencing (plan S3): GET /api/health/role, 503 on mutating /api routes
+// while this node isn't the active primary. No-op unless APP_ROLE is set.
+installRoleFencing(app);
+
 app.use("/api/auth", authRouter);
 app.use("/api/groups", groupsRouter);
 app.use("/api/bills", billsRouter);
@@ -72,6 +77,10 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
 };
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`SplittingWisdom API listening on port ${PORT}`);
-});
+// Integration tests (vitest sets VITEST) import `app` and drive it with
+// supertest on an ephemeral port instead of binding PORT.
+if (!process.env.VITEST) {
+  app.listen(PORT, () => {
+    console.log(`SplittingWisdom API listening on port ${PORT}`);
+  });
+}

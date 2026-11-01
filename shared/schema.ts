@@ -53,7 +53,10 @@ export const groups = pgTable("groups", {
   // same set of people needs another bill together.
   isPersonal: boolean("is_personal").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  // timestamptz (migration 0005): last-writer-wins sync compares instants,
+  // which must not depend on any node's session time zone. A trigger bumps
+  // it on every write; the app-side value is overwritten, not trusted.
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const groupsRelations = relations(groups, ({ one, many }) => ({
@@ -127,7 +130,10 @@ export const bills = pgTable("bills", {
   ),
   lastEditedAt: timestamp("last_edited_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  // timestamptz (migration 0005): last-writer-wins sync compares instants,
+  // which must not depend on any node's session time zone. A trigger bumps
+  // it on every write; the app-side value is overwritten, not trusted.
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const billsRelations = relations(bills, ({ one, many }) => ({
