@@ -33,16 +33,44 @@ sudo reboot
 After the reboot, `docker compose ps` should show everything healthy again without
 you starting anything.
 
-## Before migrating real data (M2)
+## Rehearse the Supabase migration (M2)
 
-`smoke.sh` leaves throwaway `qa-*` users behind, and the migration expects an empty
-database. **This deletes all data and receipts on the Pi**, so only run it before
-real data is here:
+This copies real user data to the Pi and only reads from Supabase, so nobody on the
+current app is affected. It's a rehearsal: nothing on the Pi counts as the real data
+until the cutover (P4.5). Keep Funnel off until the copy is wiped; the script
+refuses to run while Funnel is on.
+
+**You need:** the Supabase session pooler URL, from the dashboard under **Connect →
+Session pooler** (port `5432`). Put your database password in it, percent-encoding
+any special characters.
+
+```bash
+cd ~/splittingwisdom/deploy/pi
+git pull
+docker compose build
+docker compose up -d
+
+# Wipes the Pi's database and receipts, so only while there's no real data here.
+docker compose down -v
+docker compose up -d
+
+./copy-from-supabase.sh    # asks for the URL (hidden); ends with RESULT: OK
+./smoke.sh                 # the app works on the copy
+```
+
+Row differences can be a false alarm if someone used the live app between the dump
+and the comparison. To retry, wipe the database and run the script again.
+
+Then remove everything real from the Pi:
 
 ```bash
 docker compose down -v
 docker compose up -d
+rm -rf ~/splittingwisdom-migration
 ```
+
+The dump holds real user data, including password hashes, so don't leave it around
+or copy it elsewhere.
 
 ## Day to day
 

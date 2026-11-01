@@ -569,6 +569,7 @@ curl -s https://<pi>.<tailnet>.ts.net/api/health/role
 | 2026-11-01 | `52b902f` | **D2a** settlements: rules in `shared/lib/settlement.ts`, `POST/GET /api/settlements`, dialog, history, derived bill status |
 | 2026-11-01 | (this one) | **D2b/D2c** simplify-debts view, onboarding, motion pass, a11y fixes (contrast tokens, names, pre-paint theme) |
 | 2026-11-01 | (branch `dev-pi-p`) | **P3 + P2 code** `DATABASE_SSL`/`DATABASE_POOLER`, local receipts (`STORAGE_DRIVER`), `SERVE_CLIENT`, graceful shutdown, `server/src/migrate.ts`, `deploy/pi/`. `deploy/pi/smoke.sh` passed on the Pi: 62/62 plus login surviving a full restart (M1 QA-1). P2.4 stays open until a reboot is confirmed to bring the stack back |
+| 2026-11-01 | (branch `dev-pi-m2`) | **M2 tooling** `deploy/pi/copy-from-supabase.sh` (P4.1–P4.4: read-only dump of the 7 app tables, atomic restore, sequences) and `server/src/tools/verify-migration.ts` (QA-4, ignores `updated_at`/`origin`). Tested against a local old-schema stand-in; P4 stays open until it passes on the Pi against real Supabase |
 
 **Still open in D2:** D2.1's `Idempotency-Key` handling and `requireWritable` are deliberately *not* wired yet — they land with workstream S (S6.1 / S3). The client already sends the key.
 
