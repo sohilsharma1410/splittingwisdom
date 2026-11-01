@@ -545,6 +545,7 @@ curl -s https://<pi>.<tailnet>.ts.net/api/health/role
 | `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` | for sync-agent only | for storage + sync | server-only, never client |
 | `SUPABASE_ANON_KEY` | — | — | **GitHub secret** for keep-alive only |
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | yes | yes | D3.1 |
+| `OCR_DRIVER` / `OCR_URL` | `local` / `http://ocr:8000` | unset (Gemini, or manual entry with no key) | D18 |
 | `TS_AUTHKEY` | yes (tagged, reusable) | — | |
 | `PI_PUBLIC_URL` | — | Funnel URL | controller probes |
 | `VERCEL_URL` (client build) | — | — | S7 redirect target (public) |

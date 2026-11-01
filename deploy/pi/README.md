@@ -112,6 +112,17 @@ Amounts are in paise, so `10000` means ₹100.00. Balances aren't stored in any 
 the app works them out when needed. Avoid `SELECT *` on `users` and `session` when
 sharing output, because they hold password hashes and login sessions.
 
+## Receipt scanning (OCR)
+
+The `ocr` container reads receipt photos on the Pi, with no outside service (plan D18). It sits
+on a Docker network with no internet, which holds only it and the API, so photos can't leave the
+Pi. It's limited to 1500 MB and 3 CPU cores, and handles one scan at a time. If it's down, scans
+fall back to manual entry and the rest of the app keeps working.
+
+The memory limit only works with `cgroup_enable=memory cgroup_memory=1` in
+`/boot/firmware/cmdline.txt`. `smoke.sh` checks this. To see whether OCR is healthy, run
+`docker compose ps ocr` and `docker compose logs ocr`. It never logs photos or their text.
+
 ## OCR speed test
 
 A temporary test for the local OCR plan (plan D18). Scans run with no network access, so

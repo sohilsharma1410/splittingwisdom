@@ -7,6 +7,8 @@
 //
 // It registers throwaway users (qa-<random>@example.com). Against a real
 // database those rows remain unless you clean them (see QA_CLEANUP below).
+import { readFileSync } from "node:fs";
+
 const BASE = (process.env.BASE_URL ?? "http://localhost:4100").replace(/\/$/, "");
 const RUN = Math.random().toString(36).slice(2, 8);
 // A unique client IP per run keeps the per-IP rate limiters from tripping
@@ -167,6 +169,51 @@ async function main() {
     check("receipt URL needs a login -> 401", anonymous.status === 401, `status ${anonymous.status}`);
     r = await C.req("GET", `/api/bills/${billId}/receipt-url`);
     check("outsider gets no receipt URL -> 404", r.status === 404, `status ${r.status}`);
+  }
+
+  // --- receipts read on this server (the Pi): EXPECT_LOCAL_OCR=1 -------------
+  if (process.env.EXPECT_LOCAL_OCR) {
+    const headers = { Cookie: A.cookie, "X-Forwarded-For": FAKE_IP, "X-Forwarded-Proto": "https" };
+    const scan = async (file) => {
+      const form = new FormData();
+      const bytes = readFileSync(new URL(`./fixtures/${file}`, import.meta.url));
+      form.append("image", new Blob([bytes], { type: "image/jpeg" }), file);
+      const res = await fetch(`${BASE}/api/bills/extract`, { method: "POST", headers, body: form });
+      return { status: res.status, data: (await res.json()).data };
+    };
+
+    // Real database requests during a scan, because a scan must not slow the app down.
+    let scanning = true;
+    let slowestMs = 0;
+    const watcher = (async () => {
+      while (scanning) {
+        const started = Date.now();
+        await A.req("GET", "/api/groups");
+        slowestMs = Math.max(slowestMs, Date.now() - started);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    })();
+    const started = Date.now();
+    const made = await scan("made-up-receipt.jpg");
+    const scanMs = Date.now() - started;
+    scanning = false;
+    await watcher;
+
+    const e = made.data?.extraction;
+    check("scan of a made-up receipt succeeds -> 200", made.status === 200 && made.data?.extractionFailed === false, JSON.stringify(made).slice(0, 300));
+    check("scan took under 20 seconds", scanMs < 20000, `${scanMs} ms`);
+    check("app stayed fast during the scan (under 1 second)", slowestMs < 1000, `slowest ${slowestMs} ms`);
+    check("scan read the merchant and date", e?.merchant === "MADE UP TEST CAFE" && e?.billDate === "2026-10-12", JSON.stringify([e?.merchant, e?.billDate]));
+    check("scan read every item, with line totals in paise",
+      JSON.stringify(e?.items?.map((i) => [i.name, i.price, i.quantity])) === JSON.stringify([["Paneer Tikka", 36000, 2], ["Butter Naan", 22000, 4], ["Masala Chaas", 6000, 1]]),
+      JSON.stringify(e?.items));
+    check("scan read tax and total, and they add up", e?.taxAmount === 3200 && e?.totalAmount === 67200 && e?.totalsMismatch === null, JSON.stringify([e?.taxAmount, e?.totalAmount, e?.totalsMismatch]));
+    check("scan kept the photo", Boolean(made.data?.imagePath));
+
+    const blank = await scan("not-a-receipt.jpg");
+    check("a photo with no bill falls back to manual entry, photo kept",
+      blank.status === 200 && blank.data?.extractionFailed === true && Boolean(blank.data?.imagePath), JSON.stringify(blank).slice(0, 300));
+    console.log(`      scan took ${scanMs} ms, slowest app request during it ${slowestMs} ms`);
   }
 
   // --- hardening -------------------------------------------------------------

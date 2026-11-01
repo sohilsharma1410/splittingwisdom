@@ -23,7 +23,7 @@ import { getMembership } from "../middleware/authorize.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { idempotency } from "../middleware/idempotency.js";
 import { isSupportedReceiptMimeType, uploadReceiptImage, getReceiptSignedUrl } from "../lib/storage.js";
-import { extractReceipt } from "../lib/gemini.js";
+import { extractReceipt } from "../lib/receipt-extract.js";
 import { loadBillStatuses } from "../lib/bill-status.js";
 
 const MAX_RECEIPT_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -384,10 +384,10 @@ router.post("/", idempotency(), async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /api/bills/extract — upload a receipt photo and get back OCR'd bill
 // data to prefill the create-bill form. Never a gate: the image uploads to
-// Storage *before* Gemini is called, so a failed/timed-out extraction still
+// Storage *before* the receipt is read, so a failed/timed-out extraction still
 // returns a usable imagePath and the client falls back to manual entry with
-// the photo preserved (SPEC §2.7). Rate-limited since this is the one route
-// that costs real (if free-tier) external API usage per call.
+// the photo preserved (SPEC §2.7). Rate-limited since each call costs a scan on
+// the Pi or (if free-tier) external API usage on Render.
 // ---------------------------------------------------------------------------
 router.post(
   "/extract",

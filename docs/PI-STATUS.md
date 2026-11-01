@@ -81,6 +81,15 @@ and isn't tuned to Indonesian wording, so it tests structure, not Indian bills. 
 are never high confidence because they print rounded line totals that don't add up exactly.
 Real Indian restaurant bills are still untested.
 
+**Step 3, the service, is `deploy/pi/ocr/` and `server/src/lib/receipt-extract.ts`.** On the Pi,
+`POST /api/bills/extract` uses the `ocr` container. There's no scan screen yet, so people can't
+reach this from the app. Its network has no internet and holds only it and the API, and it's
+limited to 1500 MB and 3 cores. On x86 without Docker, the real flow passed `qa-smoke` 70/70. The
+Compose setup, isolation and memory limit are checked by `deploy/pi/smoke.sh`, and only the Pi can
+run those. An unknown `OCR_DRIVER` skips the scan, so a typo can't send photos to Google. Render
+will use Gemini by default when it gets this code, or manual entry if it has no key, so M4 needs a
+decision on that.
+
 **Bug in the Gemini path, not fixed:** `computeTotalsMismatch` in `server/src/lib/gemini.ts`
 multiplies price by quantity, which doesn't match how balances work.
 
