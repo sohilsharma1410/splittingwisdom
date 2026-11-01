@@ -30,20 +30,28 @@ Build the whole-bill mic first (it's what D4.11 and D4.12 describe), and add the
 4. Under each item, chips show who it was matched to. Anything unclear is a highlighted word with the choices.
 5. **Apply** fills the assignments. Nothing is saved until the normal **Confirm**. One tap undoes it.
 
-## What's still needed
+## What's built (branch `dev-voice-names`)
 
-| Need | Task | Notes |
-|---|---|---|
-| Run the speed test on the Pi itself | D4.9 | The numbers so far are x86. The owner approves the Pi numbers before any app code. |
-| Isolated `stt` container | D4.10 | Like `ocr`: no internet, no route to Postgres, limits, models fetched at build. |
-| `POST /api/speech/transcribe` | D4.10 | Auth, rate limit, size and length limits. Takes audio and a group (and optionally a bill's items). Builds the prompt itself. Never logs audio or text. |
-| `POST /api/speech/split` | D4.12 | Takes text, a group and the bill's items. Returns assignments, doubts and the ambiguous words. Used when the transcript is edited. |
-| Mic on the review screen and the bill's item list | D4.11 | MediaRecorder; denied mic, unsupported browser, failure and "unavailable on the standby" all fall back to hand entry. |
-| Per-item mic | D4.11 | See above. |
-| Alias table ("Sid" for Siddharth) | Backlog | Needs a migration, so it's the owner's call. Sound matching covers most of this first. |
+| Piece | Where |
+|---|---|
+| `stt` container (faster-whisper `base.en`, int8, 3 threads, no retries; no internet, no Postgres, no host port, read-only, 1500 MB cap) | `deploy/pi/stt/`, service in `deploy/pi/docker-compose.yml` |
+| `GET /api/speech/status`, `POST /api/speech/transcribe`, `POST /api/speech/interpret` | `server/src/routes/speech.ts` |
+| Prompt built on the server from the group's people and the bill's items | `server/src/lib/speech-stt.ts` |
+| Name matching by sound; unknown name before "had" holds the sentence back | `server/src/lib/speech-names.ts`, `speech-split.ts` |
+| Bill details by voice: items, quantity, price (each or in all), tax, tip, service, discount, percentages, total | `server/src/lib/speech-bill.ts`, `speech-numbers.ts` |
+| Mic dialog: record, editable transcript, "what we understood", Apply | `client/src/components/voice/voice-dialog.tsx`, `hooks/use-speech.ts` |
+| Entry points: **Speak the bill** (New Bill dialog and the scan page), **Assign by voice** (scan review and saved bills), per-item mic on every row | `scan-bill.tsx`, `bill-detail.tsx`, `bill-form-dialog.tsx` |
 
-## What's tested so far
+`STT_URL` turns speech on. Unset (Render and Vercel) hides every mic, and the app works as before.
 
-`speech-names.test.ts`: usual mishearings of eight names match; everyday words and different names don't; in a sentence a misspelt name is assigned only when one person sounds like it, and left blank (with a doubt) when two do. The earlier `speech-split` sentence tests are unchanged: no wrong guesses.
+**Money from speech.** Speaking the bill is the one place amounts come from speech. They are read as whole paise with integer maths only, shown on the same review screen as a photo scan, and checked against the total the person said. A line where "2 naan 160" could mean each or in all is marked "check this line" and uses the line total. Assigning by voice never touches amounts: only people and share counts.
 
-**Not yet tested:** real audio. Misspellings in the tests were written by hand. The next test is text-to-speech clips run through Whisper with and without the group's names in the prompt, then through this matcher.
+## Tested
+
+- 30 matcher tests, 14 bill-by-voice tests, 13 route tests (auth, other people's groups, limits, service down), 6 browser tests (speak a bill and save it, assign after a scan, per item, saved bill, accessibility in light and dark at 360px).
+- **Real speech recognition on a Mac** (Whisper `base.en`, text-to-speech voices Samantha, Rishi and Daniel, 6 sentences each, 18 per setting): names kept 13/30 without the group's names in the prompt, 28/30 with them. Through the whole matcher: without the prompt 5 exact, 10 left blank, 3 wrong; with it 17 exact, 1 left blank, **0 wrong**.
+- Not real people: the voices are synthetic. Real phone recordings of friends at a table are still the test that counts.
+
+## Not built
+
+Nicknames ("Sid" for Siddharth), which need a migration, and tap-to-choose between two similar names (it explains the doubt in words and leaves the item for you to assign).

@@ -76,9 +76,11 @@ services:
       RECEIPTS_DIR: /data/receipts
       OCR_PROVIDER: rapidocr
       OCR_URL: http://ocr:8000
+      STT_URL: http://stt:8000
     networks:
       - default
       - ocr
+      - stt
     ports:
       - "127.0.0.1:4000:4000"
     volumes:
@@ -135,6 +137,39 @@ services:
       retries: 4
       start_period: 30s
 
+  # Turns spoken bill details and splits into text (plan D4.10). Built like ocr: only on the "stt"
+  # network (no internet, no Postgres), no host port, read-only, capped memory and CPU. The API
+  # doesn't wait for it: if it's down the mic is hidden and everything is typed. It shares the
+  # three cores with ocr; the D4.9 test found base.en fits well inside this limit.
+  stt:
+    image: splittingwisdom-stt:local
+    pull_policy: never
+    build: stt
+    init: true
+    restart: unless-stopped
+    networks:
+      - stt
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1500m
+    memswap_limit: 1500m
+    cpuset: "0-2"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health', timeout=4)"
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 60s
+
   # Forward sync to Supabase. Stays off until M4: start it with `--profile sync`
   # once SYNC_TARGET_DATABASE_URL is set in .env.
   sync-agent:
@@ -151,6 +186,8 @@ services:
 
 networks:
   ocr:
+    internal: true
+  stt:
     internal: true
 
 volumes:

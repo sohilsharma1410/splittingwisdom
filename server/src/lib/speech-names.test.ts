@@ -58,6 +58,18 @@ describe("in a sentence", () => {
     expect(splitFromSpeech("rawi had the paneer butter masala", items, group).assignments).toEqual({ 0: { 2: 1 } });
   });
 
+  it("finds a dish even when a plural 's' was misheard or dropped ('chas' for 'chaas')", () => {
+    const dishes = [{ index: 0, name: "Veg Biryani", quantity: 1 }, { index: 1, name: "Masala Chaas", quantity: 1 }];
+    const result = splitFromSpeech("give the biryani to ravi and split the chas between me and priya", dishes, group);
+    expect(result.assignments).toEqual({ 0: { 2: 1 }, 1: { 1: 1, 4: 1 } });
+  });
+
+  it("holds a sentence back when a name before 'had' isn't anyone it knows, instead of giving their items to someone else", () => {
+    const result = splitFromSpeech("zoltan had the biryani and i had the naan", items, group);
+    expect(result.assignments).not.toHaveProperty("2");
+    expect(result.doubts.join(" ")).toContain("zoltan");
+  });
+
   it("leaves it blank when two people sound alike, rather than guessing", () => {
     const twins = [...group, { id: 5, name: "Kiran" }];
     const result = splitFromSpeech("karen had the biryani", items, twins);

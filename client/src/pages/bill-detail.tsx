@@ -17,6 +17,10 @@ import { useBill, useUpdateBill, type BillItemDetail, type BillItemInput, type I
 import { useGroup } from "@/hooks/use-groups";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import { Mic } from "lucide-react";
+import { VoiceDialog } from "@/components/voice/voice-dialog";
+import { useInterpretAssign, useSpeechAvailable, type AssignInterpretation } from "@/hooks/use-speech";
+import { assignmentsFromShares, describeShares } from "@/lib/voice-assign";
 import { formatPaise } from "@splittingwisdom/shared";
 
 const SPLIT_TYPE_LABEL: Record<string, string> = {
@@ -50,6 +54,10 @@ export default function BillDetail() {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [assigningItem, setAssigningItem] = useState<BillItemDetail | null>(null);
   const { toast } = useToast();
+  const speech = useSpeechAvailable();
+  const interpretAssign = useInterpretAssign();
+  // null: closed. itemId null: the whole bill.
+  const [voiceFor, setVoiceFor] = useState<{ itemId: number | null } | null>(null);
 
   const updateBill = useUpdateBill(billId, data?.bill.groupId ?? -1);
   const { data: groupData } = useGroup(data?.bill.groupId ?? -1);
@@ -84,6 +92,20 @@ export default function BillDetail() {
       toast({ title: "Couldn't save assignment", variant: "error" });
     }
   }
+
+  async function saveVoiceAssignments(result: AssignInterpretation) {
+    const byItem = new Map(result.assignments.map((a) => [a.itemIndex, assignmentsFromShares(a.shares)]));
+    const nextItems: BillItemInput[] = bill.items.map((item, i) => (byItem.has(i) ? { ...itemToInput(item), assignments: byItem.get(i)! } : itemToInput(item)));
+    try {
+      await updateBill.mutateAsync({ items: nextItems });
+      toast({ title: `Assigned ${byItem.size} item${byItem.size === 1 ? "" : "s"}`, variant: "success" });
+    } catch {
+      toast({ title: "Couldn't save the assignments", variant: "error" });
+    }
+  }
+  const canVoice = speech && groupMembers.length > 0;
+  const voiceItemIndex = voiceFor?.itemId != null ? bill.items.findIndex((i) => i.id === voiceFor.itemId) : -1;
+  const nameOf = (id: number) => groupMembers.find((m) => m.id === id)?.displayName ?? "Someone";
 
   return (
     <div className="space-y-6">
@@ -134,10 +156,18 @@ export default function BillDetail() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Items</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">Items</h2>
+          {canVoice && (
+            <Button type="button" variant="outline" size="sm" onClick={() => setVoiceFor({ itemId: null })}>
+              <Mic className="h-4 w-4" aria-hidden="true" />
+              Assign by voice
+            </Button>
+          )}
+        </div>
         <div className="divide-y divide-border rounded-xl border border-border bg-surface">
           {bill.items.map((item) => (
-            <ItemRow key={item.id} item={item} onEdit={() => setAssigningItem(item)} />
+            <ItemRow key={item.id} item={item} onEdit={() => setAssigningItem(item)} onVoice={canVoice ? () => setVoiceFor({ itemId: item.id }) : undefined} />
           ))}
         </div>
       </section>
@@ -223,6 +253,30 @@ export default function BillDetail() {
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
       />
+      {canVoice && (
+        <VoiceDialog<AssignInterpretation>
+          open={voiceFor !== null}
+          onOpenChange={(open) => !open && setVoiceFor(null)}
+          title={voiceItemIndex >= 0 ? `Who had ${bill.items[voiceItemIndex].name}?` : "Say who had what"}
+          example={voiceItemIndex >= 0 ? "Ravi and me" : "Ravi had the biryani and I shared the naan with Priya"}
+          applyLabel="Assign"
+          groupId={bill.groupId}
+          itemNames={voiceItemIndex >= 0 ? [bill.items[voiceItemIndex].name] : bill.items.map((i) => i.name)}
+          interpret={async (text) => {
+            const items = bill.items.map((item, index) => ({ index, name: item.name, quantity: item.quantity }));
+            const result = await interpretAssign.mutateAsync({ text, groupId: bill.groupId, items, itemIndex: voiceItemIndex >= 0 ? voiceItemIndex : undefined });
+            return {
+              summary: result.assignments.map((a) => (
+                <span key={a.itemIndex}><span className="font-medium">{bill.items[a.itemIndex]?.name}</span> → {describeShares(a.shares, nameOf)}</span>
+              )),
+              doubts: result.doubts,
+              payload: result,
+            };
+          }}
+          onApply={(result) => void saveVoiceAssignments(result)}
+        />
+      )}
+
       {assigningItem && (
         <AssignmentEditor
           open={!!assigningItem}
@@ -243,7 +297,7 @@ export default function BillDetail() {
   );
 }
 
-function ItemRow({ item, onEdit }: { item: BillItemDetail; onEdit: () => void }) {
+function ItemRow({ item, onEdit, onVoice }: { item: BillItemDetail; onEdit: () => void; onVoice?: () => void }) {
   const isAssigned = item.assignments.length > 0;
   return (
     <div className="p-4">
@@ -264,6 +318,11 @@ function ItemRow({ item, onEdit }: { item: BillItemDetail; onEdit: () => void })
         </div>
         <div className="flex shrink-0 items-center justify-between gap-3 pr-20 sm:justify-end sm:pr-0">
           <span className="tabular-currency text-sm font-semibold">{formatPaise(item.price)}</span>
+          {onVoice && (
+            <Button size="icon" variant="ghost" aria-label={`Say who had ${item.name}`} onClick={onVoice}>
+              <Mic className="h-4 w-4 text-mint-ink" aria-hidden="true" />
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={onEdit}>
             {isAssigned ? "Edit" : "Assign"}
           </Button>

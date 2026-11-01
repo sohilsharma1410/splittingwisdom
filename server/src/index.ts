@@ -14,6 +14,7 @@ import balancesRouter from "./routes/balances.js";
 import usersRouter from "./routes/users.js";
 import settlementsRouter from "./routes/settlements.js";
 import receiptsRouter from "./routes/receipts.js";
+import speechRouter from "./routes/speech.js";
 import { installRoleFencing } from "./roles/install.js";
 
 export const app = express();
@@ -72,6 +73,7 @@ app.use("/api/balances", balancesRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/settlements", settlementsRouter);
 app.use("/api/receipts", receiptsRouter);
+app.use("/api/speech", speechRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ error: { message: "Not found." } });

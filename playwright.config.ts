@@ -9,5 +9,5 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   reporter: [["list"]],
-  use: { channel: "chrome", headless: true },
+  use: { channel: "chrome", headless: true, permissions: ["microphone"] },
 });

@@ -99,12 +99,18 @@ function singular(word: string): string {
 function matchItems(tokens: string[], start: number, items: SpeechItem[]): { indexes: number[]; length: number } | null {
   let best: { indexes: number[]; length: number } | null = null;
   for (let length = 1; start + length <= tokens.length && length <= 4; length++) {
-    const said = tokens.slice(start, start + length).map(singular);
+    const raw = tokens.slice(start, start + length);
+    const said = raw.map(singular);
     if (said.some((word) => NOT_NAMES.has(word) && word.length < 4)) break;
     const indexes = items
       .filter((item) => {
-        const name = words(item.name).map(singular);
-        return name.some((_, from) => said.every((word, offset) => name[from + offset] !== undefined && sameWord(word, name[from + offset])));
+        const rawName = words(item.name);
+        const name = rawName.map(singular);
+        // Compare as spoken and with plurals trimmed: trimming "chaas" and "chas" to "cha" and "chaa" would hide a match.
+        const same = (offset: number, from: number) =>
+          name[from + offset] !== undefined &&
+          (sameWord(said[offset], name[from + offset]) || sameWord(raw[offset], rawName[from + offset]) || sameWord(raw[offset], name[from + offset]) || sameWord(said[offset], rawName[from + offset]));
+        return name.some((_, from) => said.every((_w, offset) => same(offset, from)));
       })
       .map((item) => item.index);
     if (indexes.length === 0) break;
@@ -150,6 +156,12 @@ function tagWords(text: string, items: SpeechItem[], members: SpeechMember[]): T
         continue;
       }
       const match = NOT_NAMES.has(token) ? null : matchItems(tokens, i, items);
+      // A word right before "had/took/ate" that we don't know is probably somebody's name, heard badly.
+      // Skipping it would hand their items to whoever is named next, so hold the sentence back instead.
+      if (!match && !NOT_NAMES.has(token) && next !== undefined && VERBS.has(next) && token.length >= 3 && !/^\d+$/.test(token) && NUMBERS[token] === undefined) {
+        tags.push({ kind: "stop", reason: `Couldn't tell who "${token}" is, so that part wasn't filled in.` });
+        continue;
+      }
       if (match) {
         const previous = tags[tags.length - 1];
         const count = previous?.kind === "number" ? previous.value : undefined;

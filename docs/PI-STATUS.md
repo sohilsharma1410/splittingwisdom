@@ -357,6 +357,10 @@ Given these same 60 sentences as perfect text, the matcher scores 48 / 12 / 0.
 
 **What this doesn't show.** No public recording of people splitting a bill was found. The real voices are Indian-accented speakers reading general sentences (Common Voice, CC0, accent labels self-reported and mostly male), so they test accents, not names or dishes. The split clips come from text-to-speech: two Hindi voices reading English written in Devanagari, and one US voice. They aren't real people. Background speech is mixed in at 10 dB. Real people saying real splits in the app is still the test that counts. The clips are never committed.
 
+## Voice (branch `dev-voice-names`, not on `main` yet)
+
+Adds an `stt` container beside `ocr` (`deploy/pi/stt/`, same isolation: no internet, no Postgres, no host port) and `STT_URL: http://stt:8000` on the API. After it merges: `git pull`, `docker compose build stt api`, `docker compose up -d`, `docker compose ps` shows `stt` healthy. The build downloads `base.en` (about 145 MB) once. No key and no migration. Render and Vercel have no `STT_URL`, so the mic is hidden there. See `docs/VOICE-WORKFLOW.md`.
+
 ## What runs where
 
 | | Pi | Render and Vercel | Supabase |

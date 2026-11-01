@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useLocation, useSearch } from "wouter";
-import { AlertCircle, AlertTriangle, Camera, ImagePlus, Loader2, Plus, ScanLine, Trash2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, Camera, ImagePlus, Loader2, Mic, Plus, ScanLine, Trash2, X } from "lucide-react";
 import { formatPaise } from "@splittingwisdom/shared";
 import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/hooks/use-auth";
-import { useCreateBill, useExtractReceipt, type ExtractResponse } from "@/hooks/use-bills";
+import { useCreateBill, useExtractReceipt, type ExtractResponse, type ReceiptExtraction } from "@/hooks/use-bills";
+import { useInterpretAssign, useInterpretBill, useSpeechAvailable, type AssignInterpretation } from "@/hooks/use-speech";
+import { VoiceDialog } from "@/components/voice/voice-dialog";
+import { describeShares } from "@/lib/voice-assign";
 import { useGroup, useGroups } from "@/hooks/use-groups";
 import { ApiError } from "@/lib/query-client";
 import {
@@ -43,6 +46,11 @@ export default function ScanBill() {
   const extract = useExtractReceipt();
   const [photo, setPhoto] = useState<{ file: File; url: string } | null>(null);
   const [result, setResult] = useState<ExtractResponse | null>(null);
+  // Set when the bill was described out loud instead of photographed.
+  const [spoken, setSpoken] = useState<string | null>(null);
+  const [speakOpen, setSpeakOpen] = useState(new URLSearchParams(search).get("speak") === "1");
+  const speech = useSpeechAvailable();
+  const interpretBill = useInterpretBill();
 
   useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url); }, [photo]);
 
@@ -58,6 +66,7 @@ export default function ScanBill() {
   function startOver() {
     setPhoto(null);
     setResult(null);
+    setSpoken(null);
     extract.reset();
   }
 
@@ -71,7 +80,7 @@ export default function ScanBill() {
         </div>
       </header>
 
-      {!photo && <PickPhoto onPick={onPick} />}
+      {!photo && !result && <PickPhoto onPick={onPick} onSpeak={speech ? () => setSpeakOpen(true) : undefined} />}
 
       {photo && extract.isPending && <Reading photoUrl={photo.url} />}
 
@@ -88,14 +97,37 @@ export default function ScanBill() {
         </div>
       )}
 
-      {photo && result && (
-        <ReviewForm key={result.imagePath} photoUrl={photo.url} result={result} lockedGroup={lockedGroup} onStartOver={startOver} />
+      {result && (photo || spoken !== null) && (
+        <ReviewForm key={result.imagePath ?? "spoken"} photoUrl={photo?.url ?? null} spokenText={spoken} result={result} lockedGroup={lockedGroup} onStartOver={startOver} />
       )}
+
+      <VoiceDialog<ReceiptExtraction>
+        open={speakOpen}
+        onOpenChange={setSpeakOpen}
+        title="Speak the bill"
+        example="Two paneer tikka 250 each, naan 80, GST 5 percent, total 650"
+        applyLabel="Use this bill"
+        interpret={async (text) => {
+          const { extraction, doubts } = await interpretBill.mutateAsync({ text });
+          const summary = extraction.items.map((i) => (
+            <span key={i.name} className="tabular-currency">{i.quantity > 1 ? `${i.quantity} × ` : ""}{i.name} — {i.price > 0 ? formatPaise(i.price) : "no price heard"}</span>
+          ));
+          const charge = (label: string, value: number | null) => value ? summary.push(<span key={label} className="tabular-currency">{label} — {formatPaise(value)}</span>) : 0;
+          charge("Tax", extraction.taxAmount); charge("Service charge", extraction.serviceFeeAmount); charge("Tip", extraction.tipAmount);
+          charge("Discount", extraction.discountAmount); charge("Total you said", extraction.totalAmount);
+          return { summary: extraction.items.length > 0 ? summary : [], doubts, payload: extraction };
+        }}
+        onApply={(extraction, text) => {
+          setPhoto(null);
+          setSpoken(text);
+          setResult({ imagePath: null, extraction, extractionFailed: false, ocr: { provider: "speech", model: "your voice" } });
+        }}
+      />
     </div>
   );
 }
 
-function PickPhoto({ onPick }: { onPick: (e: ChangeEvent<HTMLInputElement>) => void }) {
+function PickPhoto({ onPick, onSpeak }: { onPick: (e: ChangeEvent<HTMLInputElement>) => void; onSpeak?: () => void }) {
   const camera = useRef<HTMLInputElement>(null);
   const gallery = useRef<HTMLInputElement>(null);
   return (
@@ -116,6 +148,12 @@ function PickPhoto({ onPick }: { onPick: (e: ChangeEvent<HTMLInputElement>) => v
           <ImagePlus className="h-4 w-4" aria-hidden="true" />
           Choose from gallery
         </Button>
+        {onSpeak && (
+          <Button variant="outline" onClick={onSpeak}>
+            <Mic className="h-4 w-4" aria-hidden="true" />
+            Speak the bill
+          </Button>
+        )}
       </div>
       <input ref={camera} type="file" accept={ACCEPT} capture="environment" className="hidden" onChange={onPick} aria-label="Take a photo of the receipt" />
       <input ref={gallery} type="file" accept={ACCEPT} className="hidden" onChange={onPick} aria-label="Choose a receipt photo" />
@@ -144,7 +182,7 @@ function Reading({ photoUrl }: { photoUrl: string }) {
   );
 }
 
-function ReviewForm({ photoUrl, result, lockedGroup, onStartOver }: { photoUrl: string; result: ExtractResponse; lockedGroup: number | null; onStartOver: () => void }) {
+function ReviewForm({ photoUrl, spokenText, result, lockedGroup, onStartOver }: { photoUrl: string | null; spokenText: string | null; result: ExtractResponse; lockedGroup: number | null; onStartOver: () => void }) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -162,6 +200,12 @@ function ReviewForm({ photoUrl, result, lockedGroup, onStartOver }: { photoUrl: 
   const [leaveOpen, setLeaveOpen] = useState(false);
   const group = useGroup(groupId ?? 0);
   const members = group.data?.group.members ?? [];
+  const speech = useSpeechAvailable();
+  const interpretAssign = useInterpretAssign();
+  // Who is being assigned by voice: one row, or the whole bill.
+  const [voiceFor, setVoiceFor] = useState<{ itemKey: string | null } | null>(null);
+  const linked = members.filter((m) => m.isLinked);
+  const nameOf = (id: number) => members.find((m) => m.id === id)?.displayName ?? "Someone";
 
   // One group on the account: no need to make them pick it.
   useEffect(() => {
@@ -179,6 +223,10 @@ function ReviewForm({ photoUrl, result, lockedGroup, onStartOver }: { photoUrl: 
   type Row = ReceiptDraft["items"][number];
   const editItem = (key: string, change: (item: Row) => Row) =>
     edit({ items: draft.items.map((i) => (i.key === key ? { ...change(i), low: false } : i)) });
+
+  const namedItems = draft.items.map((item, i) => ({ item, index: i })).filter(({ item }) => item.name.trim());
+  const canAssignByVoice = speech && groupId !== null && linked.length > 0 && namedItems.length > 0;
+  const voiceItem = voiceFor?.itemKey ? draft.items.find((i) => i.key === voiceFor.itemKey) : undefined;
 
   const totals = computeTotals(draft);
   const mismatch = mismatchOf(draft);
@@ -201,12 +249,22 @@ function ReviewForm({ photoUrl, result, lockedGroup, onStartOver }: { photoUrl: 
   return (
     <div className="grid gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
       <div className="md:sticky md:top-4 md:self-start">
-        <button type="button" onClick={() => setZoom(true)} className="block w-full" aria-label="View the full receipt photo">
-          <img src={photoUrl} alt="Your receipt" className="max-h-56 w-full rounded-xl border border-border object-contain md:max-h-[70vh]" />
-        </button>
-        <p className="mt-2 text-xs text-muted-foreground">
-          {failed ? "Photo saved." : `Read by ${result.ocr?.model ?? "the receipt reader"}.`} Tap the photo to enlarge it.
-        </p>
+        {photoUrl ? (
+          <>
+            <button type="button" onClick={() => setZoom(true)} className="block w-full" aria-label="View the full receipt photo">
+              <img src={photoUrl} alt="Your receipt" className="max-h-56 w-full rounded-xl border border-border object-contain md:max-h-[70vh]" />
+            </button>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {failed ? "Photo saved." : `Read by ${result.ocr?.model ?? "the receipt reader"}.`} Tap the photo to enlarge it.
+            </p>
+          </>
+        ) : (
+          <section aria-label="What you said" className="space-y-2 rounded-xl border border-border bg-surface p-4">
+            <h2 className="flex items-center gap-2 text-sm font-semibold"><Mic className="h-4 w-4 text-mint-ink" aria-hidden="true" />What you said</h2>
+            <p className="text-sm text-muted-foreground" data-testid="spoken-text">“{spokenText}”</p>
+            <p className="text-xs text-muted-foreground">Check every line on the right. Nothing is saved until you confirm.</p>
+          </section>
+        )}
       </div>
 
       <div className="space-y-6">
@@ -285,7 +343,15 @@ function ReviewForm({ photoUrl, result, lockedGroup, onStartOver }: { photoUrl: 
         </section>
 
         <section className="space-y-3" aria-label="Items">
-          <h2 className="text-lg font-semibold">Items</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold">Items</h2>
+            {canAssignByVoice && (
+              <Button type="button" variant="outline" size="sm" onClick={() => setVoiceFor({ itemKey: null })}>
+                <Mic className="h-4 w-4" aria-hidden="true" />
+                Assign by voice
+              </Button>
+            )}
+          </div>
           <ul className="space-y-2">
             {draft.items.map((item, index) => (
               <li key={item.key} className={cn("rounded-xl border bg-surface p-3", item.low ? "border-2 border-warn" : "border-border")}>
@@ -298,10 +364,25 @@ function ReviewForm({ photoUrl, result, lockedGroup, onStartOver }: { photoUrl: 
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <Input aria-label={`Item ${index + 1} name`} value={item.name} onChange={(e) => editItem(item.key, (i) => ({ ...i, name: e.target.value }))} placeholder="Item name" className="min-w-0 flex-1" />
+                    {canAssignByVoice && item.name.trim() && (
+                      <Button type="button" variant="ghost" size="icon" aria-label={`Say who had ${item.name.trim()}`} onClick={() => setVoiceFor({ itemKey: item.key })}>
+                        <Mic className="h-4 w-4 text-mint-ink" aria-hidden="true" />
+                      </Button>
+                    )}
                     <Button type="button" variant="ghost" size="icon" aria-label={`Remove item ${index + 1}`} disabled={draft.items.length === 1} onClick={() => edit({ items: draft.items.filter((i) => i.key !== item.key) })}>
                       <Trash2 className="h-4 w-4 text-coral-ink" aria-hidden="true" />
                     </Button>
                   </div>
+                  {item.assignees && item.assignees.length > 0 && (
+                    <p className="flex flex-wrap items-center gap-2 text-xs" data-testid={`assignees-${index + 1}`}>
+                      <span className="text-muted-foreground">Had by:</span>
+                      <span className="font-medium">{describeShares(item.assignees, nameOf)}</span>
+                      <button type="button" className="inline-flex items-center gap-0.5 rounded text-muted-foreground underline hover:text-foreground" aria-label={`Clear who had ${item.name || `item ${index + 1}`}`} onClick={() => editItem(item.key, (i) => ({ ...i, assignees: undefined }))}>
+                        <X className="h-3 w-3" aria-hidden="true" />
+                        Everyone
+                      </button>
+                    </p>
+                  )}
                   <div className="grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] gap-2">
                     <div className="space-y-1">
                       <Label htmlFor={`scan-qty-${item.key}`} className="text-xs text-muted-foreground">Qty</Label>
@@ -370,7 +451,7 @@ function ReviewForm({ photoUrl, result, lockedGroup, onStartOver }: { photoUrl: 
                 </li>
               ))}
             </ul>
-            <p className="text-xs text-muted-foreground">Every item is split equally between these people. After saving you can change who had what, item by item.</p>
+            <p className="text-xs text-muted-foreground">Items nobody was assigned to are split equally between these people. After saving you can still change who had what, item by item.</p>
           </section>
         )}
 
@@ -390,10 +471,39 @@ function ReviewForm({ photoUrl, result, lockedGroup, onStartOver }: { photoUrl: 
         </div>
       </div>
 
-      <Dialog open={zoom} onOpenChange={setZoom}>
+      {groupId !== null && (
+        <VoiceDialog<AssignInterpretation>
+          open={voiceFor !== null}
+          onOpenChange={(open) => !open && setVoiceFor(null)}
+          title={voiceItem ? `Who had ${voiceItem.name.trim()}?` : "Say who had what"}
+          example={voiceItem ? "Ravi and me" : "Ravi had the biryani and I shared the naan with Priya"}
+          applyLabel="Assign"
+          groupId={groupId}
+          itemNames={voiceItem ? [voiceItem.name.trim()] : namedItems.map(({ item }) => item.name.trim())}
+          interpret={async (text) => {
+            const items = namedItems.map(({ item, index }) => ({ index, name: item.name.trim(), quantity: Math.max(1, Number(item.quantity) || 1) }));
+            const itemIndex = voiceItem ? draft.items.indexOf(voiceItem) : undefined;
+            const result = await interpretAssign.mutateAsync({ text, groupId, items, itemIndex });
+            return {
+              summary: result.assignments.map((a) => (
+                <span key={a.itemIndex}><span className="font-medium">{draft.items[a.itemIndex]?.name}</span> → {describeShares(a.shares, nameOf)}</span>
+              )),
+              doubts: result.doubts,
+              payload: result,
+            };
+          }}
+          onApply={(result) => {
+            const byIndex = new Map(result.assignments.map((a) => [a.itemIndex, a.shares]));
+            edit({ items: draft.items.map((item, i) => (byIndex.has(i) ? { ...item, assignees: byIndex.get(i) } : item)) });
+            toast({ title: "Assigned. Check the names, then confirm.", variant: "success" });
+          }}
+        />
+      )}
+
+      <Dialog open={zoom && photoUrl !== null} onOpenChange={setZoom}>
         <DialogContent className="md:max-w-2xl">
           <DialogHeader><DialogTitle>Receipt</DialogTitle></DialogHeader>
-          <img src={photoUrl} alt="Your receipt, full size" className="max-h-[75vh] w-full rounded-lg object-contain" />
+          {photoUrl && <img src={photoUrl} alt="Your receipt, full size" className="max-h-[75vh] w-full rounded-lg object-contain" />}
         </DialogContent>
       </Dialog>
 

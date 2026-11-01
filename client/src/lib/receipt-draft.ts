@@ -3,6 +3,7 @@
 // All money is whole paise internally; inputs are rupee strings converted at the edge.
 import { paiseToRupeeInput, rupeesToPaise } from "@splittingwisdom/shared";
 import type { CreateBillInput, ReceiptExtraction } from "@/hooks/use-bills";
+import { assignmentsFromShares } from "@/lib/voice-assign";
 
 export interface DraftItem {
   key: string;
@@ -13,6 +14,8 @@ export interface DraftItem {
   /** Rupees per unit while it's being typed; otherwise derived from price and quantity (see line-item.ts). */
   unit?: string;
   qtyBasis?: string;
+  /** Who had this, when set by voice. Unset means everyone ticked under "Split equally between". */
+  assignees?: { memberId: number; units: number }[];
   /** The model wasn't sure about this line. */
   low: boolean;
 }
@@ -65,7 +68,8 @@ export function draftFromExtraction(extraction: ReceiptExtraction | null, today:
     ? extraction.items.map((i) => ({
         key: newItemKey(),
         name: i.name,
-        price: paiseToRupeeInput(i.price),
+        // A line spoken without a price comes back as 0; leave the box empty so it has to be filled in.
+        price: i.price > 0 ? paiseToRupeeInput(i.price) : "",
         // No quantity read (missing, zero or junk) means one.
         quantity: Number.isInteger(i.quantity) && i.quantity >= 1 ? String(i.quantity) : "1",
         low: i.confidence === "low",
@@ -163,7 +167,10 @@ export function buildCreateBill(
       name: item.name.trim(),
       price,
       quantity,
-      assignments: target.memberIds.map((memberId) => ({ memberId, splitType: "equal" as const })),
+      // Whoever was assigned by voice has that item; the rest are split between the ticked people.
+      assignments: item.assignees?.length
+        ? assignmentsFromShares(item.assignees)
+        : target.memberIds.map((memberId) => ({ memberId, splitType: "equal" as const })),
     });
   }
   if (items.length === 0) return { ok: false, message: "Add at least one item." };

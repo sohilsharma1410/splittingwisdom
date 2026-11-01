@@ -3,7 +3,8 @@ import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { parseDateOnly } from "@/lib/date";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, ChevronDown, Loader2, ScanLine, X } from "lucide-react";
+import { CalendarIcon, ChevronDown, Loader2, Mic, ScanLine, X } from "lucide-react";
+import { useSpeechAvailable } from "@/hooks/use-speech";
 import {
   Dialog,
   DialogContent,
@@ -93,6 +94,7 @@ type GroupSelection = number | "individual" | null;
 
 export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: BillFormDialogProps) {
   const [, navigate] = useLocation();
+  const speechAvailable = useSpeechAvailable();
   const { toast } = useToast();
   const { user } = useAuth();
   const { data: groupsData } = useGroups();
@@ -474,18 +476,34 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
         </DialogHeader>
 
         {!isEditing && (
-          <Button
-            type="button"
-            variant="outline"
-            className="mb-4 w-full"
-            onClick={() => {
-              onOpenChange(false);
-              navigate(`/bill/new/scan${lockedGroupId ? `?group=${lockedGroupId}` : ""}`);
-            }}
-          >
-            <ScanLine className="h-4 w-4" aria-hidden="true" />
-            Scan a receipt instead
-          </Button>
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                onOpenChange(false);
+                navigate(`/bill/new/scan${lockedGroupId ? `?group=${lockedGroupId}` : ""}`);
+              }}
+            >
+              <ScanLine className="h-4 w-4" aria-hidden="true" />
+              Scan a receipt instead
+            </Button>
+            {speechAvailable && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  onOpenChange(false);
+                  navigate(`/bill/new/scan?speak=1${lockedGroupId ? `&group=${lockedGroupId}` : ""}`);
+                }}
+              >
+                <Mic className="h-4 w-4" aria-hidden="true" />
+                Speak the bill instead
+              </Button>
+            )}
+          </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>

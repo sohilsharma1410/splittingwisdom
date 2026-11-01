@@ -36,13 +36,16 @@ npm run build --workspace=shared >/dev/null
 # (and the app's "point at a local model" path is what gets exercised).
 (nohup node scripts/fake-vision-model.mjs 4290 > "$ROOT/.localdb/fake-model.log" 2>&1 & echo $! > "$PIDS/fake-model.pid"); started+=("$PIDS/fake-model.pid")
 mkdir -p "$ROOT/.localdb/e2e-receipts"
+# Speech for the browser tests: a stand-in that "hears" whatever the test writes to the file.
+: > "$ROOT/.localdb/fake-stt.txt"
+(FAKE_STT_FILE="$ROOT/.localdb/fake-stt.txt" nohup node scripts/fake-stt.mjs 4291 > "$ROOT/.localdb/fake-stt.log" 2>&1 & echo $! > "$PIDS/fake-stt.pid"); started+=("$PIDS/fake-stt.pid")
 
-start_api() { # port
+start_api() { # port [speech service url]
   cat > "$ROOT/.localdb/start-api-$1.sh" <<SH
 #!/usr/bin/env bash
 cd "$ROOT/server"
 DATABASE_URL="$DB_URL" SESSION_SECRET=local-test-secret PORT=$1 NODE_ENV=development \\
-  OCR_PROVIDER=ollama OCR_BASE_URL=http://127.0.0.1:4290/v1 OCR_MODEL=fake-vision STORAGE_DRIVER=local RECEIPTS_DIR="$ROOT/.localdb/e2e-receipts" \\
+  ${2:+STT_URL=$2} OCR_PROVIDER=ollama OCR_BASE_URL=http://127.0.0.1:4290/v1 OCR_MODEL=fake-vision STORAGE_DRIVER=local RECEIPTS_DIR="$ROOT/.localdb/e2e-receipts" \\
   nohup npx tsx src/index.ts > "$ROOT/.localdb/api-$1.log" 2>&1 &
 echo \$! > "$PIDS/api-$1.pid"
 SH
@@ -55,7 +58,7 @@ start_preview() { # port host api
 }
 wait_for() { for _ in $(seq 1 60); do curl -sf "$1" >/dev/null 2>&1 && return 0; sleep 0.5; done; echo "timed out waiting for $1" >&2; return 1; }
 
-start_api 4200; start_api 4201
+start_api 4200 http://127.0.0.1:4291; start_api 4201   # the standby has no speech service, like Render
 start_preview 4273 localhost http://localhost:4200
 start_preview 4274 127.0.0.1 http://localhost:4201
 wait_for http://localhost:4273/api/health; wait_for http://127.0.0.1:4274/api/health

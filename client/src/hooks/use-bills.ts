@@ -250,7 +250,7 @@ export interface ReceiptExtraction {
 
 export interface ExtractResponse {
   /** Where the photo was stored; pass back as receiptImageUrl when saving the bill. */
-  imagePath: string;
+  imagePath: string | null;
   extraction: ReceiptExtraction | null;
   extractionFailed: boolean;
   /** Which model read it. */
