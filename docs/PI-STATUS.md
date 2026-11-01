@@ -345,11 +345,13 @@ ends up blank, which is the case for adding a small model. No model has been tri
 
 **Words to the split matcher.** Generated voices, `base.en` with prompt, counted as exact / left blank / wrong guess:
 
-| Sentences | Perfect transcripts | Indian-style voices | US voice |
-|---|---|---|---|
-| Short | 48 / 12 / 0 of 60, across 56 short and 4 long | 67 / 38 / 7 | 38 / 16 / 2 |
-| Long | | 1 / 4 / 3 | 1 / 2 / 1 |
-| Long, background speech | | 0 / 2 / 6 | 1 / 2 / 1 |
+| Sentences | Hindi voices | US voice |
+|---|---|---|
+| Short | 67 / 38 / 7 | 38 / 16 / 2 |
+| Long | 1 / 4 / 3 | 1 / 2 / 1 |
+| Long, background speech | 0 / 2 / 6 | 1 / 2 / 1 |
+
+Given these same 60 sentences as perfect text, the matcher scores 48 / 12 / 0.
 
 **The rules that avoid wrong guesses on clean text do make them on imperfect transcripts,** and longer speech is the real use. D4.12 has to deal with this before it can be trusted: for example, "chas" for "chaas" isn't always recognised. Confirm still catches a wrong guess, but only if the person notices.
 

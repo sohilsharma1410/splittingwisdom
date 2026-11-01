@@ -14,3 +14,6 @@ build/
 # playwright
 test-results/
 playwright-report/
+
+# Python
+__pycache__/
