@@ -43,7 +43,7 @@ test("settle part of a balance from the list: cap, partial payment, instant refr
 
   const row = page.getByRole("link", { name: /View balance with Alice Payer/ }).locator("..");
   await expect(row).toContainText("₹350.00");
-  await row.getByRole("button", { name: /Pay Alice Payer/ }).click();
+  await row.getByRole("button", { name: /Settle with Alice Payer/ }).click();
 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("You are paying");
@@ -77,7 +77,7 @@ test("settle part of a balance from the list: cap, partial payment, instant refr
   await expect(history).toContainText("“UPI part 1”");
 
   // Settle the rest from here → pair is settled.
-  await page.getByRole("button", { name: /Pay Alice Payer/ }).click();
+  await page.getByRole("button", { name: /Settle with Alice Payer/ }).click();
   await expect(page.getByRole("dialog").getByLabel("Amount (₹)")).toHaveValue("200.00");
   await page.getByRole("dialog").getByRole("button", { name: "Confirm" }).click();
   await expect(page.getByText("Settled up").first()).toBeVisible({ timeout: 5000 });
@@ -93,7 +93,7 @@ test("settle part of a balance from the list: cap, partial payment, instant refr
 test("double-tapping Confirm records exactly one payment", async ({ page, playwright }) => {
   const { alice, groupId } = await scenario(page, playwright);
   await page.goto(`${BASE}/balances`);
-  await page.getByRole("button", { name: /Pay Alice Payer/ }).click();
+  await page.getByRole("button", { name: /Settle with Alice Payer/ }).click();
   const confirm = page.getByRole("dialog").getByRole("button", { name: "Confirm" });
   await confirm.dblclick();
   await page.getByRole("dialog").getByText("Payment recorded").waitFor();
@@ -105,10 +105,10 @@ test("double-tapping Confirm records exactly one payment", async ({ page, playwr
 test("dashboard offers Settle too, and a settled person disappears from the outstanding list", async ({ page, playwright }) => {
   await scenario(page, playwright);
   await page.goto(`${BASE}/`);
-  await page.getByRole("button", { name: /Pay Alice Payer/ }).click();
+  await page.getByRole("button", { name: /Settle with Alice Payer/ }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Confirm" }).click();
   await expect(page.getByRole("dialog")).toBeHidden({ timeout: 5000 });
-  await expect(page.getByRole("button", { name: /Pay Alice Payer/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Settle with Alice Payer/ })).toHaveCount(0);
   await expect(page.getByText("All settled up")).toBeVisible();
 });
 
@@ -117,7 +117,7 @@ test("balances list has no horizontal overflow at 360px", async ({ browser }) =>
   const page = await context.newPage();
   await scenario(page, { request: { newContext: () => context.browser()!.newContext().then((c) => c.request) } });
   await page.goto(`${BASE}/balances`);
-  await expect(page.getByRole("button", { name: /Pay Alice Payer/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Settle with Alice Payer/ })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
   if (process.env.E2E_SHOTS) await page.screenshot({ path: `${process.env.E2E_SHOTS}/balances-360.png` });

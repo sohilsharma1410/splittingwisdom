@@ -216,6 +216,22 @@ export function simplifyDebts(pairwise: PairwiseBalance[]): SuggestedPayment[] {
   return payments;
 }
 
+/**
+ * Today's direct debts as "X owes Y" lines — the default, untouched view that
+ * the simplified suggestions are compared against. Largest first; ties by
+ * member id so the order never jumps around between loads.
+ */
+export function listDirectDebts(pairwise: PairwiseBalance[]): SuggestedPayment[] {
+  return pairwise
+    .filter((p) => p.netAmount !== 0)
+    .map((p) =>
+      p.netAmount > 0
+        ? { fromMemberId: p.memberIdA, toMemberId: p.memberIdB, amount: p.netAmount }
+        : { fromMemberId: p.memberIdB, toMemberId: p.memberIdA, amount: -p.netAmount },
+    )
+    .sort((a, b) => b.amount - a.amount || a.fromMemberId - b.fromMemberId || a.toMemberId - b.toMemberId);
+}
+
 /** How many separate direct debts exist today — the "before" in "6 debts → 3 payments". */
 export function countDirectDebts(pairwise: PairwiseBalance[]): number {
   return pairwise.filter((p) => p.netAmount !== 0).length;

@@ -321,7 +321,7 @@ function CustomRow({ label, value, onChange }: { label: string; value: string; o
 }
 
 function ValidationLine({ valid, text }: { valid: boolean; text: string }) {
-  return <p className={cn("text-xs", valid ? "text-success" : "text-coral")}>{text}</p>;
+  return <p className={cn("text-xs", valid ? "text-success-ink" : "text-coral-ink")}>{text}</p>;
 }
 
 function safeRupeesToPaise(input: string | undefined): number {

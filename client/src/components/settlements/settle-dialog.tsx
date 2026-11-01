@@ -140,7 +140,7 @@ export function SettleDialog({
       <DialogContent>
         {done ? (
           <div className="flex flex-col items-center gap-3 py-8 text-center" role="status" aria-live="polite">
-            <span className="settle-check flex h-16 w-16 items-center justify-center rounded-full bg-success/15 text-success">
+            <span className="settle-check flex h-16 w-16 items-center justify-center rounded-full bg-success/15 text-success-ink">
               <Check className="h-9 w-9" strokeWidth={3} aria-hidden="true" />
             </span>
             <p className="text-lg font-semibold">Payment recorded</p>
@@ -174,7 +174,7 @@ export function SettleDialog({
                   <p
                     id="settle-amount-help"
                     role={amountProblem ? "alert" : undefined}
-                    className={amountProblem ? "flex items-start gap-1.5 text-xs text-coral" : "text-xs text-muted-foreground"}
+                    className={amountProblem ? "flex items-start gap-1.5 text-xs text-coral-ink" : "text-xs text-muted-foreground"}
                   >
                     {amountProblem ? (
                       <>
@@ -191,7 +191,7 @@ export function SettleDialog({
                     <button
                       type="button"
                       onClick={() => setAmountText(paiseToRupeeInput(outstanding))}
-                      className="shrink-0 text-xs font-medium text-mint hover:underline"
+                      className="shrink-0 text-xs font-medium text-mint-ink hover:underline"
                     >
                       Pay full
                     </button>
@@ -207,7 +207,7 @@ export function SettleDialog({
                 <Input id="settle-date" type="date" value={date} max={todayLocal()} onChange={(e) => setDate(e.target.value)} />
               </div>
               {error && (
-                <p role="alert" className="flex items-start gap-1.5 text-sm text-coral">
+                <p role="alert" className="flex items-start gap-1.5 text-sm text-coral-ink">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                   {error}
                 </p>

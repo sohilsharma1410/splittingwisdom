@@ -17,7 +17,7 @@ export function UpdatePrompt() {
       className="flex items-center justify-center gap-3 border-b border-border bg-surface px-4 py-2 text-sm"
     >
       <span className="flex items-center gap-2">
-        <RefreshCw className="h-4 w-4 shrink-0 text-mint" aria-hidden="true" />
+        <RefreshCw className="h-4 w-4 shrink-0 text-mint-ink" aria-hidden="true" />
         A new version of SplittingWisdom is ready.
       </span>
       <Button size="sm" onClick={() => void updateServiceWorker(true)}>

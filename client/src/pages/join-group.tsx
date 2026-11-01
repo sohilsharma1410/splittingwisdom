@@ -29,7 +29,7 @@ export default function JoinGroup() {
     const nextPath = `/join/${token}`;
     return (
       <div className="mx-auto flex max-w-lg flex-col items-center gap-4 px-4 py-16 text-center">
-        <Users className="h-10 w-10 text-mint" aria-hidden="true" />
+        <Users className="h-10 w-10 text-mint-ink" aria-hidden="true" />
         <h1 className="text-xl font-semibold">You've been invited to a group</h1>
         <p className="text-muted-foreground">Log in or create an account to join.</p>
         <div className="flex gap-2">
@@ -59,7 +59,7 @@ export default function JoinGroup() {
   if (data.alreadyMember) {
     return (
       <div className="mx-auto flex max-w-lg flex-col items-center gap-4 px-4 py-16 text-center">
-        <Check className="h-10 w-10 text-success" aria-hidden="true" />
+        <Check className="h-10 w-10 text-success-ink" aria-hidden="true" />
         <h1 className="text-xl font-semibold">You're already in {data.group.name}</h1>
         <Button asChild>
           <Link href={`/group/${data.group.id}`}>Go to group</Link>
@@ -87,7 +87,7 @@ export default function JoinGroup() {
   return (
     <div className="mx-auto max-w-lg space-y-6 px-4 py-16">
       <div className="text-center">
-        <Users className="mx-auto h-10 w-10 text-mint" aria-hidden="true" />
+        <Users className="mx-auto h-10 w-10 text-mint-ink" aria-hidden="true" />
         <h1 className="mt-3 text-xl font-semibold">Join "{data.group.name}"</h1>
         <p className="mt-1 text-muted-foreground">Who are you in this group?</p>
       </div>

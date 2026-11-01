@@ -26,7 +26,7 @@ export function Calendar(props: DayPickerProps) {
         day_button:
           "h-9 w-9 rounded-md text-sm font-normal hover:bg-foreground/5 aria-selected:opacity-100",
         selected: "[&>button]:bg-mint [&>button]:text-mint-foreground [&>button]:hover:bg-mint",
-        today: "[&>button]:font-semibold [&>button]:text-mint",
+        today: "[&>button]:font-semibold [&>button]:text-mint-ink",
         outside: "text-muted-foreground opacity-50",
         disabled: "text-muted-foreground opacity-30",
       }}

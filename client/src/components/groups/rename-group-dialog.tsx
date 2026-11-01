@@ -69,7 +69,7 @@ export function RenameGroupDialog({
             />
           </div>
           {error && (
-            <p role="alert" className="text-sm text-coral">
+            <p role="alert" className="text-sm text-coral-ink">
               {error}
             </p>
           )}

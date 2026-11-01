@@ -24,14 +24,14 @@ export function ServerStatusBanner() {
 
   if (status.kind === "offline") {
     return (
-      <Bar icon={<WifiOff className="h-4 w-4 shrink-0 text-coral" aria-hidden="true" />}>
+      <Bar icon={<WifiOff className="h-4 w-4 shrink-0 text-coral-ink" aria-hidden="true" />}>
         You're offline. Changes can't be saved until you're back online.
       </Bar>
     );
   }
   if (status.kind === "redirecting") {
     return (
-      <Bar icon={<Loader2 className="h-4 w-4 shrink-0 animate-spin text-mint" aria-hidden="true" />}>
+      <Bar icon={<Loader2 className="h-4 w-4 shrink-0 animate-spin text-mint-ink" aria-hidden="true" />}>
         {status.target === "backup" ? "Main server unreachable — opening the backup app…" : "Main server is back — switching…"}
       </Bar>
     );
@@ -39,7 +39,7 @@ export function ServerStatusBanner() {
   if (status.kind === "primary-down") {
     return (
       <Bar
-        icon={<CloudOff className="h-4 w-4 shrink-0 text-coral" aria-hidden="true" />}
+        icon={<CloudOff className="h-4 w-4 shrink-0 text-coral-ink" aria-hidden="true" />}
         action={
           <Button size="sm" variant="outline" onClick={switchNow}>
             Open backup
@@ -53,7 +53,7 @@ export function ServerStatusBanner() {
   if (status.kind === "primary-back") {
     return (
       <Bar
-        icon={<ArrowRightLeft className="h-4 w-4 shrink-0 text-mint" aria-hidden="true" />}
+        icon={<ArrowRightLeft className="h-4 w-4 shrink-0 text-mint-ink" aria-hidden="true" />}
         action={
           <Button size="sm" onClick={switchNow}>
             Switch

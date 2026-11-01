@@ -14,6 +14,8 @@ export interface BalancesSummary {
   totalIOwe: number;
   unsettledCount: number;
   balances: BalanceSummaryItem[];
+  /** Groups where "simplify debts" would cut the number of payments. */
+  simplifiableGroups: { groupId: number; groupName: string; directCount: number; simplifiedCount: number }[];
 }
 
 export interface ContributingBillItem {

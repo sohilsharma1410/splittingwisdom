@@ -63,7 +63,7 @@ export function InstallBanner() {
     <div role="region" aria-label="Install the app" className="flex items-center gap-3 border-b border-border bg-surface px-4 py-2 text-sm">
       {showAndroid ? (
         <>
-          <Download className="h-4 w-4 shrink-0 text-mint" aria-hidden="true" />
+          <Download className="h-4 w-4 shrink-0 text-mint-ink" aria-hidden="true" />
           <span className="flex-1">Install SplittingWisdom on your phone for one-tap access.</span>
           <Button
             size="sm"
@@ -79,7 +79,7 @@ export function InstallBanner() {
         </>
       ) : (
         <>
-          <Share className="h-4 w-4 shrink-0 text-mint" aria-hidden="true" />
+          <Share className="h-4 w-4 shrink-0 text-mint-ink" aria-hidden="true" />
           <span className="flex-1">To install: tap the Share button, then “Add to Home Screen”.</span>
         </>
       )}

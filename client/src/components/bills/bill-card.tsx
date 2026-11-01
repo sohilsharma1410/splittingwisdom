@@ -9,7 +9,7 @@ export function BillCard({ bill }: { bill: GroupBillSummary }) {
   return (
     <Link
       href={`/bill/${bill.id}`}
-      className="flex items-center justify-between gap-4 rounded-xl border border-border bg-surface p-4 transition-shadow hover:shadow-md"
+      className="flex items-center justify-between gap-4 rounded-xl border border-border bg-surface p-4 card-lift"
     >
       <div className="min-w-0">
         <p className="truncate font-medium">{bill.description}</p>

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { SettleButton } from "@/components/settlements/settle-button";
+import { OnboardingCard, useOnboardingDismissed } from "@/components/onboarding/onboarding-card";
+import { CreateGroupDialog } from "@/components/groups/create-group-dialog";
 import { format } from "date-fns";
 import { LayoutDashboard, Users, Receipt, TrendingUp, TrendingDown, CheckCircle2, AlertTriangle } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -20,6 +22,8 @@ const RECENT_LIMIT = 3;
 
 export default function Dashboard() {
   const [newBillOpen, setNewBillOpen] = useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [onboardingDismissed, dismissOnboarding] = useOnboardingDismissed();
   const groupsQuery = useGroups();
   const balancesQuery = useBalances();
   const activityQuery = useActivity();
@@ -70,7 +74,13 @@ export default function Dashboard() {
         </Button>
       </header>
 
-      {hasNothingYet ? (
+      {hasNothingYet && !onboardingDismissed ? (
+        <OnboardingCard
+          onAddBill={() => setNewBillOpen(true)}
+          onCreateGroup={() => setCreateGroupOpen(true)}
+          onSkip={dismissOnboarding}
+        />
+      ) : hasNothingYet ? (
         <EmptyState
           icon={LayoutDashboard}
           heading="Your dashboard is empty for now"
@@ -81,15 +91,15 @@ export default function Dashboard() {
         <>
           <Link
             href="/balances"
-            className="flex items-center justify-between rounded-xl border border-border bg-surface p-4 hover:shadow-md"
+            className="flex items-center justify-between rounded-xl border border-border bg-surface p-4 card-lift"
           >
             <div>
               <p className="text-sm text-muted-foreground">Net balance</p>
               <p
                 className={cn(
                   "tabular-currency mt-1 text-2xl font-semibold",
-                  netBalance > 0 && "text-success",
-                  netBalance < 0 && "text-coral",
+                  netBalance > 0 && "text-success-ink",
+                  netBalance < 0 && "text-coral-ink",
                 )}
               >
                 {netBalance === 0 ? "Settled" : formatPaise(Math.abs(netBalance))}
@@ -99,9 +109,9 @@ export default function Dashboard() {
               {netBalance === 0 ? (
                 <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
               ) : netBalance > 0 ? (
-                <TrendingUp className="h-4 w-4 text-success" aria-hidden="true" />
+                <TrendingUp className="h-4 w-4 text-success-ink" aria-hidden="true" />
               ) : (
-                <TrendingDown className="h-4 w-4 text-coral" aria-hidden="true" />
+                <TrendingDown className="h-4 w-4 text-coral-ink" aria-hidden="true" />
               )}
               {netBalance === 0 ? "All settled" : netBalance > 0 ? "Owed to you" : "You owe"}
             </span>
@@ -121,7 +131,7 @@ export default function Dashboard() {
           <section className="space-y-2">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold">Recent activity</h2>
-              <Link href="/activity" className="text-sm text-mint hover:underline">
+              <Link href="/activity" className="text-sm text-mint-ink hover:underline">
                 View all
               </Link>
             </div>
@@ -133,7 +143,7 @@ export default function Dashboard() {
                   <Link
                     key={bill.id}
                     href={`/bill/${bill.id}`}
-                    className="flex items-center justify-between gap-4 rounded-lg border border-border bg-surface p-3 pr-20 hover:shadow-md md:pr-3"
+                    className="flex items-center justify-between gap-4 rounded-lg border border-border bg-surface p-3 pr-20 card-lift md:pr-3"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{bill.description}</p>
@@ -141,7 +151,7 @@ export default function Dashboard() {
                         {bill.groupName} · {format(parseDateOnly(bill.billDate), "d MMM yyyy")}
                       </p>
                       {bill.unassignedItemCount > 0 && (
-                        <p className="mt-0.5 flex items-center gap-1 text-xs text-coral">
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-coral-ink">
                           <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
                           {bill.unassignedItemCount} item{bill.unassignedItemCount === 1 ? "" : "s"} unassigned
                         </p>
@@ -160,7 +170,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold">Outstanding balances</h2>
               {outstandingBalances.length > 0 && (
-                <Link href="/balances" className="text-sm text-mint hover:underline">
+                <Link href="/balances" className="text-sm text-mint-ink hover:underline">
                   View all
                 </Link>
               )}
@@ -172,7 +182,7 @@ export default function Dashboard() {
                 {topBalances.map((b) => (
                   <div
                     key={b.personId}
-                    className="relative flex items-center gap-3 rounded-lg border border-border bg-surface p-3 pr-20 hover:shadow-md md:pr-3"
+                    className="relative flex items-center gap-3 rounded-lg border border-border bg-surface p-3 pr-20 card-lift md:pr-3"
                   >
                     <Link
                       href={`/balance/${b.personId}`}
@@ -188,7 +198,7 @@ export default function Dashboard() {
                       <span
                         className={cn(
                           "tabular-currency text-sm font-semibold",
-                          b.netAmount > 0 ? "text-success" : "text-coral",
+                          b.netAmount > 0 ? "text-success-ink" : "text-coral-ink",
                         )}
                       >
                         {formatPaise(Math.abs(b.netAmount))}
@@ -204,6 +214,7 @@ export default function Dashboard() {
       )}
 
       <BillFormDialog open={newBillOpen} onOpenChange={setNewBillOpen} />
+      <CreateGroupDialog open={createGroupOpen} onOpenChange={setCreateGroupOpen} />
     </div>
   );
 }

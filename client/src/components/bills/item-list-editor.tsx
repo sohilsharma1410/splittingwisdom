@@ -91,7 +91,7 @@ export function ItemListEditor({ items, onChange, renderExtra }: ItemListEditorP
             type="button"
             onClick={() => removeRow(item.key)}
             aria-label={`Remove ${item.name || "item"}`}
-            className="shrink-0 text-muted-foreground hover:text-coral"
+            className="shrink-0 text-muted-foreground hover:text-coral-ink"
           >
             <Trash2 className="h-4 w-4" aria-hidden="true" />
           </button>

@@ -304,30 +304,30 @@ New migration(s) (CLAUDE; reviewed by owner before running on any real DB):
 > Order (D10): **D0 → D1 → D2 → D3 → D4 → D5.** D1 can start in parallel with P-work since it only needs the repo.
 
 ### D0 — Hygiene (before anything else)
-- [ ] D0.1 `npm audit fix` for prod deps (`proxy-addr`, `body-parser`, `multer`, `zod`, `qs`); rerun checks/tests/build.
-- [ ] D0.2 Login/register IP rate-limit + `helmet` (P7.2).
-- [ ] D0.3 Move `PHASE-*.md`, `README-START-HERE.md` into `docs/phases/` (tracked).
-- [ ] D0.4 Triage the Bug Report sheet (`SplittingWisdom Bug Reports`, Google Sheets) — currently only the example row; process each row as `BUG-<n>` with a regression test.
-- [ ] D0.5 Password reset: **blocked on email provider decision** (deferred by owner). Interim: owner-run `scripts/reset-password.ts <email>` + documented.
+- [x] D0.1 `npm audit fix` for prod deps (`proxy-addr`, `body-parser`, `multer`, `zod`, `qs`); rerun checks/tests/build.
+- [x] D0.2 Login/register IP rate-limit + `helmet` (P7.2).
+- [x] D0.3 Move `PHASE-*.md`, `README-START-HERE.md` into `docs/phases/` (tracked).
+- [x] D0.4 Triage the Bug Report sheet (re-checked 2026-11-01: still only the example row) (`SplittingWisdom Bug Reports`, Google Sheets) — currently only the example row; process each row as `BUG-<n>` with a regression test.
+- [x] D0.5 Password reset: **blocked on email provider decision** (deferred by owner). Interim: owner-run `scripts/reset-password.ts <email>` + documented.
 
 ### D1 — PWA foundation (needed for failover, install, voice, camera)
 New dependency approved by this plan: `vite-plugin-pwa` (Workbox) — or hand-written service worker if preferred.
-- [ ] D1.1 `manifest.webmanifest` (name, short_name, `display: standalone`, theme/background colors from design tokens, `start_url=/`, scope `/`), icons 192/512 + maskable, Apple touch icon, `<meta name="theme-color">`.
-- [ ] D1.2 Service worker: precache app shell; **never cache `/api/*` responses** (money data stays live; cache only GET `/api/health`); update flow ("New version — refresh").
-- [ ] D1.3 Install UX: Android `beforeinstallprompt` button; iOS instructions ("Share → Add to Home Screen") shown once.
-- [ ] D1.4 Failover logic S7.
-- [ ] D1.5 Offline state: friendly screen when both origins unreachable.
+- [x] D1.1 `manifest.webmanifest` (name, short_name, `display: standalone`, theme/background colors from design tokens, `start_url=/`, scope `/`), icons 192/512 + maskable, Apple touch icon, `<meta name="theme-color">`.
+- [x] D1.2 Service worker: precache app shell; **never cache `/api/*` responses** (money data stays live; cache only GET `/api/health`); update flow ("New version — refresh").
+- [x] D1.3 Install UX: Android `beforeinstallprompt` button; iOS instructions ("Share → Add to Home Screen") shown once.
+- [x] D1.4 Failover logic S7.
+- [x] D1.5 Offline state: friendly screen when both origins unreachable.
 - [ ] D1.6 Verify camera capture + file input inside installed PWA on Android and iOS.
 - [ ] Acceptance: Lighthouse PWA/installability pass; installs from Pi URL on Android Chrome + iOS Safari; shell loads offline; failover redirect works in drill QA-6.
 
 ### D2 — Phase 6 (minus APK): settlements, debt simplification, onboarding
 Source of truth for scope/acceptance: `PHASE-6-settle-ship.md` §1, §1a, §2, §4. **Drop §3 (Capacitor/APK)** per D9; keep "what's new" notice via PWA update flow instead.
 - [ ] D2.1 `POST /api/settlements` (+ list), Zod, authz (both parties in group), paise, **server-side cap at outstanding**, idempotency key (S6), `requireWritable`.
-- [ ] D2.2 Settlement dialog (pre-filled outstanding, hard-capped, note, date), enable Settle buttons (dashboard, balances, balance detail), query invalidation on all surfaces.
-- [ ] D2.3 Balance detail: settlement history interleaved into explanation; Activity "Settled/Pending" logic.
-- [ ] D2.4 `simplifyDebts()` in `/shared/lib` + vitest (cycle of 3+ strictly fewer txns; total moved unchanged; already-minimal unchanged; zero balances → none; deterministic tie-break by member id). "Simplify debts" view on Group + Balances pages; suggestion only, ledger untouched.
-- [ ] D2.5 Onboarding (3 steps, skippable, once) + motion pass (respect `prefers-reduced-motion`) + SPEC §17 states sweep + a11y sweep.
-- [ ] D2.6 Extend balance tests for settlements: full, partial, then new bill, over-settlement rejected server-side.
+- [x] D2.2 Settlement dialog (pre-filled outstanding, hard-capped, note, date), enable Settle buttons (dashboard, balances, balance detail), query invalidation on all surfaces.
+- [x] D2.3 Balance detail: settlement history interleaved into explanation; Activity "Settled/Pending" logic.
+- [x] D2.4 `simplifyDebts()` in `/shared/lib` + vitest (cycle of 3+ strictly fewer txns; total moved unchanged; already-minimal unchanged; zero balances → none; deterministic tie-break by member id). "Simplify debts" view on Group + Balances pages; suggestion only, ledger untouched.
+- [x] D2.5 Onboarding (3 steps, skippable, once) + motion pass (respect `prefers-reduced-motion`) + SPEC §17 states sweep + a11y sweep.
+- [x] D2.6 Extend balance tests for settlements: full, partial, then new bill, over-settlement rejected server-side.
 - [ ] Acceptance: Phase 6 checklist items for settlements/simplification (₹500 of ₹1,300 → ₹800 everywhere; ₹5,000 vs ₹800 rejected via direct API call; double-tap = one settlement).
 
 ### D3 — Phase 5 completion: OCR review screen
@@ -552,3 +552,25 @@ curl -s https://<pi>.<tailnet>.ts.net/api/health/role
 
 ## Appendix D — Existing references
 `CLAUDE.md` (rules) · `SPEC.md` (requirements) · `DEPLOYMENT.md` (current Vercel/Render/Supabase) · `IMPLEMENTATION-NOTES.md` · `BACKLOG.md` · `PHASE-5-ocr.md`, `PHASE-6-settle-ship.md` (to be moved to `docs/phases/`, task D0.3) · Bug sheet: *SplittingWisdom Bug Reports* (Google Sheets, shared with testers).
+
+---
+
+## Appendix E — Progress log (workstream D, kept short; commits are the source of truth)
+
+| When | Commit | What |
+|---|---|---|
+| 2026-11-01 | `b720406` | `scripts/local-pg.sh` (throwaway Postgres 17 clusters under `.localdb/`), `scripts/qa-smoke.mjs` (QA-1, dependency-free, runs against any `BASE_URL`) |
+| 2026-11-01 | `4931126` | **D0** audit fixes (prod deps now 0 vulns), IP+email login rate limit, `helmet`, `docs/phases/`, `server/scripts/reset-password.ts` |
+| 2026-11-01 | `61a81c4` | **D1** PWA: manifest/icons/service worker, client failover (`client/src/lib/failover.ts`, 23 unit tests), install help, health CORS |
+| 2026-11-01 | `52b902f` | **D2a** settlements: rules in `shared/lib/settlement.ts`, `POST/GET /api/settlements`, dialog, history, derived bill status |
+| 2026-11-01 | (this one) | **D2b/D2c** simplify-debts view, onboarding, motion pass, a11y fixes (contrast tokens, names, pre-paint theme) |
+
+**Still open in D2:** D2.1's `Idempotency-Key` handling and `requireWritable` are deliberately *not* wired yet — they land with workstream S (S6.1 / S3). The client already sends the key.
+
+**How to run everything locally (no Docker needed):** `scripts/e2e-local.sh` starts a throwaway Postgres, a primary and a standby API + client, runs the 49-check API smoke test and all Playwright specs, then stops what it started. Needs Homebrew `postgresql@17` and Google Chrome. Never touches the production DB.
+
+**Gotchas for anyone on this branch**
+- After `npm install <pkg> --workspace=…`, run `node scripts/link-drizzle-orm.mjs` — npm prunes the `drizzle-orm` symlink that `drizzle-kit` needs (fresh installs recreate it via `postinstall`).
+- Text accents use `text-*-ink` classes (`text-mint-ink`, `text-coral-ink`, …), **not** `text-mint`/`text-coral`: the brand tints fail WCAG contrast as text on light backgrounds. Use `bg-*`/`border-*` for fills and borders.
+- If Express starts serving the client (P3.3) and a strict CSP is added: `client/public/theme-init.js` is a separate file on purpose (no inline scripts needed); fonts come from `fonts.googleapis.com`/`fonts.gstatic.com`.
+- `client/vercel.json` rewrites `/api/*` to the Render API; Vercel previews are behind Vercel login (Deployment Protection) and their `/api` still points at production Render.

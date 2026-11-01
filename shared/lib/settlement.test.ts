@@ -6,6 +6,7 @@ import {
   computeBillSettlementStatuses,
   countDirectDebts,
   directDebt,
+  listDirectDebts,
   maxSettlementAmount,
   netPositions,
   simplifyDebts,
@@ -243,5 +244,27 @@ describe("simplifyDebts", () => {
       const after = netPositions(computeBalances(bills, applied));
       expect([...after.values()].every((v) => v === 0)).toBe(true);
     }
+  });
+});
+
+describe("listDirectDebts", () => {
+  it("lists each open pair once, as debtor → creditor, largest first", () => {
+    const pw = computeBalances([bill(A, rs("300"), [A, B, C]), bill(B, rs("100"), [B, C])], []);
+    // B owes A 100, C owes A 100, C owes B 50
+    expect(listDirectDebts(pw)).toEqual([
+      { fromMemberId: B, toMemberId: A, amount: rs("100") },
+      { fromMemberId: C, toMemberId: A, amount: rs("100") },
+      { fromMemberId: C, toMemberId: B, amount: rs("50") },
+    ]);
+    expect(countDirectDebts(pw)).toBe(3);
+  });
+  it("omits settled pairs and is empty when nothing is owed", () => {
+    expect(listDirectDebts([])).toEqual([]);
+    expect(listDirectDebts(computeBalances([bill(A, rs("200"), [A, B])], [settle(B, A, rs("100"))]))).toEqual([]);
+  });
+  it("direct debts and simplified payments move the same net money", () => {
+    const pw = computeBalances([bill(B, rs("200"), [A, B]), bill(C, rs("200"), [B, C])], []);
+    expect(listDirectDebts(pw)).toHaveLength(2);
+    expect(simplifyDebts(pw)).toHaveLength(1);
   });
 });

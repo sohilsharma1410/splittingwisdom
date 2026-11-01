@@ -37,9 +37,9 @@ export function SettleButton({
         });
       }}
       className={cn("relative z-10", size === "sm" && "h-8 px-3 text-xs", className)}
-      aria-label={netAmount < 0 ? `Pay ${displayName}` : `Record a payment from ${displayName}`}
     >
       {netAmount < 0 ? "Settle" : "Record payment"}
+      <span className="sr-only">{netAmount < 0 ? ` with ${displayName}` : ` from ${displayName}`}</span>
     </Button>
   );
 }

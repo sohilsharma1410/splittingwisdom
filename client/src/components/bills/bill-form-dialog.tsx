@@ -516,7 +516,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
                         type="button"
                         onClick={() => removeParticipant(p.id)}
                         aria-label={`Remove ${p.displayName}`}
-                        className="text-muted-foreground hover:text-coral"
+                        className="text-muted-foreground hover:text-coral-ink"
                       >
                         <X className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
@@ -615,7 +615,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
                   quickSplit ? "border-mint bg-mint/10" : "border-border hover:bg-foreground/5",
                 )}
               >
-                <p className={cn("text-sm font-medium", quickSplit && "text-mint")}>Quick Split</p>
+                <p className={cn("text-sm font-medium", quickSplit && "text-mint-ink")}>Quick Split</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">One total, split equally</p>
               </button>
               <button
@@ -627,7 +627,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
                   !quickSplit ? "border-mint bg-mint/10" : "border-border hover:bg-foreground/5",
                 )}
               >
-                <p className={cn("text-sm font-medium", !quickSplit && "text-mint")}>Itemize</p>
+                <p className={cn("text-sm font-medium", !quickSplit && "text-mint-ink")}>Itemize</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">List items, assign each one</p>
               </button>
             </div>
@@ -659,7 +659,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
                         <button
                           type="button"
                           onClick={() => setEditingItemKey(item.key)}
-                          className="text-xs text-mint hover:underline"
+                          className="text-xs text-mint-ink hover:underline"
                         >
                           {summarizeAssignment(getEffectiveAssignments(item.key), effectiveMemberIds.length)} · Edit split
                         </button>
@@ -727,7 +727,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
                 <button
                   type="button"
                   onClick={() => navigator.clipboard.writeText(`${window.location.origin}/join/${groupData.group.inviteToken}`)}
-                  className="font-medium text-mint hover:underline"
+                  className="font-medium text-mint-ink hover:underline"
                 >
                   Copy invite link
                 </button>
@@ -749,7 +749,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
                       ? `Everyone (${members.length} people)`
                       : `${splitMemberIds?.length ?? 0} of ${members.length} people`}
                   </span>
-                  <span className="text-mint">Change</span>
+                  <span className="text-mint-ink">Change</span>
                 </button>
               ) : (
                 <div className="space-y-2 rounded-lg border border-border p-3">
@@ -772,7 +772,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
               <button
                 type="button"
                 onClick={() => setShowReceiptTotal((s) => !s)}
-                className="flex items-center gap-1.5 text-sm font-medium text-mint"
+                className="flex items-center gap-1.5 text-sm font-medium text-mint-ink"
                 aria-expanded={showReceiptTotal}
               >
                 <ChevronDown
@@ -785,7 +785,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
                 <div className="space-y-1.5">
                   <CurrencyInput placeholder="0.00" value={receiptTotal} onChange={(e) => setReceiptTotal(e.target.value)} />
                   {receiptMismatch !== 0 && (
-                    <p role="alert" className="text-xs text-coral">
+                    <p role="alert" className="text-xs text-coral-ink">
                       Items add up to {formatPaise(itemsTotal)}, but the receipt says{" "}
                       {formatPaise(safeRupeesToPaise(receiptTotal))} — a difference of {formatPaise(Math.abs(receiptMismatch))}.
                       You can still save; the item total will be used.
@@ -798,7 +798,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
 
           {quickSplit && quickPreview.rows.length > 0 && safeRupeesToPaise(totalAmount) > 0 && (
             <div className="space-y-1.5 rounded-lg bg-mint/10 p-3 text-sm">
-              <p className="font-medium text-mint">Live preview</p>
+              <p className="font-medium text-mint-ink">Live preview</p>
               {quickPreview.rows.map((row) => (
                 <div key={row.id} className="flex justify-between">
                   <span>{row.name}</span>
@@ -812,14 +812,14 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
             </div>
           )}
           {quickSplit && totalAmount && safeRupeesToPaise(totalAmount) <= 0 && (
-            <p role="alert" className="text-sm text-coral">
+            <p role="alert" className="text-sm text-coral-ink">
               Total amount must be greater than zero.
             </p>
           )}
 
           {itemizedPreview && (
             <div className="space-y-1.5 rounded-lg bg-mint/10 p-3 text-sm">
-              <p className="font-medium text-mint">Live preview</p>
+              <p className="font-medium text-mint-ink">Live preview</p>
               {itemizedPreview.rows.map((row) => (
                 <div key={row.id} className="flex justify-between">
                   <span>{row.name}</span>
@@ -834,7 +834,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
           )}
 
           {error && (
-            <p role="alert" className="text-sm text-coral">
+            <p role="alert" className="text-sm text-coral-ink">
               {error}
             </p>
           )}

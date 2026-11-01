@@ -41,11 +41,9 @@ export function MobileHeader() {
         {user && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button
-                aria-label="Account menu"
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-teal/20 text-xs font-semibold text-teal"
-              >
-                {user.displayName.slice(0, 2).toUpperCase()}
+              <button className="flex h-8 w-8 items-center justify-center rounded-full bg-teal/20 text-xs font-semibold text-teal-ink">
+                <span aria-hidden="true">{user.displayName.slice(0, 2).toUpperCase()}</span>
+                <span className="sr-only">Account menu for {user.displayName}</span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -61,7 +59,7 @@ export function MobileHeader() {
                 <KeyRound className="h-4 w-4" aria-hidden="true" />
                 Change password
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={handleLogout} className="text-coral">
+              <DropdownMenuItem onSelect={handleLogout} className="text-coral-ink">
                 <LogOut className="h-4 w-4" aria-hidden="true" />
                 Log out
               </DropdownMenuItem>

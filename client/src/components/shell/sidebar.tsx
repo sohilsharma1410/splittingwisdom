@@ -65,7 +65,7 @@ export function Sidebar({ onNewBill }: { onNewBill: () => void }) {
               className={cn(
                 "font-ui flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                 isActive
-                  ? "bg-mint/15 text-mint"
+                  ? "bg-mint/15 text-mint-ink"
                   : "text-foreground hover:bg-foreground/5",
               )}
               aria-current={isActive ? "page" : undefined}
@@ -81,7 +81,7 @@ export function Sidebar({ onNewBill }: { onNewBill: () => void }) {
         {user ? (
           <div className="flex min-w-0 items-center gap-2">
             <div
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal/20 text-xs font-semibold text-teal"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal/20 text-xs font-semibold text-teal-ink"
               aria-hidden="true"
             >
               {user.displayName.slice(0, 2).toUpperCase()}
@@ -108,7 +108,7 @@ export function Sidebar({ onNewBill }: { onNewBill: () => void }) {
                   <span className="text-muted-foreground">·</span>
                   <button
                     onClick={handleLogout}
-                    className="text-muted-foreground hover:text-coral"
+                    className="text-muted-foreground hover:text-coral-ink"
                   >
                     Log out
                   </button>

@@ -15,7 +15,7 @@ export function InitialsAvatar({
   return (
     <AvatarPrimitive.Root
       className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal/20 text-xs font-semibold text-teal ring-2 ring-surface",
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal/20 text-xs font-semibold text-teal-ink ring-2 ring-surface",
         className,
       )}
     >

@@ -9,6 +9,8 @@ import {
   bills,
   settlements,
   billGrandTotal,
+  listDirectDebts,
+  simplifyDebts,
 } from "@splittingwisdom/shared";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -141,6 +143,10 @@ router.get("/:id", requireGroupMember("id"), async (req, res) => {
           joinedAt: m.joinedAt,
           balance: memberNetBalance(pairwise, m.id, allMemberIds),
         })),
+        // Today's direct debts and the reduced set of payments that would
+        // settle everyone — a suggestion only; the ledger is untouched.
+        debts: listDirectDebts(pairwise),
+        simplifiedPayments: simplifyDebts(pairwise),
       },
     },
   });

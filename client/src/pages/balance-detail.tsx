@@ -52,8 +52,8 @@ export default function BalanceDetail() {
             className={cn(
               "flex items-center gap-1 text-sm font-medium",
               isSettled && "text-muted-foreground",
-              !isSettled && isOwedToMe && "text-success",
-              !isSettled && !isOwedToMe && "text-coral",
+              !isSettled && isOwedToMe && "text-success-ink",
+              !isSettled && !isOwedToMe && "text-coral-ink",
             )}
           >
             {isSettled ? (
@@ -189,7 +189,7 @@ function SettlementRow({ payment, otherName }: { payment: SettlementHistoryItem;
       <span
         className={cn(
           "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
-          iPaid ? "bg-coral/15 text-coral" : "bg-success/15 text-success",
+          iPaid ? "bg-coral/15 text-coral-ink" : "bg-success/15 text-success-ink",
         )}
       >
         {iPaid ? <ArrowUpRight className="h-4 w-4" aria-hidden="true" /> : <ArrowDownLeft className="h-4 w-4" aria-hidden="true" />}
@@ -204,7 +204,7 @@ function SettlementRow({ payment, otherName }: { payment: SettlementHistoryItem;
         </p>
       </div>
       <span className="tabular-currency flex shrink-0 items-center gap-1.5 text-sm font-semibold">
-        <CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" />
+        <CheckCircle2 className="h-4 w-4 text-success-ink" aria-hidden="true" />
         {formatPaise(payment.amount)}
       </span>
     </li>

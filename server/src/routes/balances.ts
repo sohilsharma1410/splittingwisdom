@@ -5,6 +5,8 @@ import {
   bills,
   groups,
   settlements,
+  countDirectDebts,
+  simplifyDebts,
   billGrandTotal,
   computeBillBreakdown,
   computeItemShares,
@@ -13,13 +15,36 @@ import {
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { computeUserCounterpartyBalances } from "../lib/counterparty-balances.js";
+import { computeGroupBalances } from "../lib/group-balance.js";
 import { parsePersonId, resolvePersonTargets } from "../lib/person.js";
 
 const router = Router();
 router.use(requireAuth);
 
+/** Groups where "simplify debts" would genuinely cut the number of payments. */
+async function findSimplifiableGroups(userId: number) {
+  const mine = await db.query.groupMembers.findMany({ where: eq(groupMembers.userId, userId) });
+  if (mine.length === 0) return [];
+  const myGroups = await db.query.groups.findMany({
+    where: (g, { inArray }) => inArray(g.id, mine.map((m) => m.groupId)),
+    columns: { id: true, name: true, isPersonal: true },
+  });
+  const perGroup = await Promise.all(
+    myGroups
+      .filter((g) => !g.isPersonal)
+      .map(async (g) => {
+        const { pairwise } = await computeGroupBalances(g.id);
+        return { groupId: g.id, groupName: g.name, directCount: countDirectDebts(pairwise), simplifiedCount: simplifyDebts(pairwise).length };
+      }),
+  );
+  return perGroup.filter((g) => g.simplifiedCount < g.directCount).sort((a, b) => a.groupId - b.groupId);
+}
+
 router.get("/", async (req, res) => {
-  const balances = await computeUserCounterpartyBalances(req.session.userId!);
+  const [balances, simplifiableGroups] = await Promise.all([
+    computeUserCounterpartyBalances(req.session.userId!),
+    findSimplifiableGroups(req.session.userId!),
+  ]);
 
   const totalOwedToMe = balances.filter((b) => b.netAmount > 0).reduce((s, b) => s + b.netAmount, 0);
   const totalIOwe = balances.filter((b) => b.netAmount < 0).reduce((s, b) => s - b.netAmount, 0);
@@ -30,6 +55,7 @@ router.get("/", async (req, res) => {
       totalOwedToMe,
       totalIOwe,
       unsettledCount: balances.filter((b) => b.netAmount !== 0).length,
+      simplifiableGroups,
       balances: balances
         .map((b) => ({
           personId: b.key,

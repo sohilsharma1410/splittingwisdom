@@ -29,6 +29,7 @@
     "fsevents@2.3.3": true
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.64.1"
   }
 }

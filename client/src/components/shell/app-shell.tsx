@@ -22,7 +22,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="flex min-w-0 flex-1 flex-col">
           <InstallBanner />
           <MobileHeader />
-          <main className="mx-auto w-full max-w-[1152px] flex-1 px-4 pb-24 pt-6 md:px-8 md:pb-10">
+          <main className="mx-auto w-full max-w-[1152px] flex-1 animate-[page-in_220ms_ease-out] px-4 pb-24 pt-6 md:px-8 md:pb-10">
             {children}
           </main>
         </div>

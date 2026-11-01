@@ -94,7 +94,7 @@ export default function BillDetail() {
             {bill.groupIsPersonal ? (
               <span className="text-sm text-muted-foreground">{bill.groupName}</span>
             ) : (
-              <Link href={`/group/${bill.groupId}`} className="text-sm text-mint hover:underline">
+              <Link href={`/group/${bill.groupId}`} className="text-sm text-mint-ink hover:underline">
                 {bill.groupName}
               </Link>
             )}
@@ -110,7 +110,7 @@ export default function BillDetail() {
             <Pencil className="h-4 w-4" aria-hidden="true" />
           </Button>
           <Button variant="outline" size="icon" aria-label="Delete bill" onClick={() => setDeleteOpen(true)}>
-            <Trash2 className="h-4 w-4 text-coral" aria-hidden="true" />
+            <Trash2 className="h-4 w-4 text-coral-ink" aria-hidden="true" />
           </Button>
         </div>
       </header>
@@ -157,7 +157,7 @@ export default function BillDetail() {
       <section>
         <button
           onClick={() => setBreakdownOpen(true)}
-          className="text-sm font-medium text-mint hover:underline"
+          className="text-sm font-medium text-mint-ink hover:underline"
         >
           See full breakdown
         </button>
@@ -256,7 +256,7 @@ function ItemRow({ item, onEdit }: { item: BillItemDetail; onEdit: () => void })
           <span
             className={cn(
               "mt-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
-              isAssigned ? "bg-mint/15 text-mint" : "bg-coral/15 text-coral",
+              isAssigned ? "bg-mint/15 text-mint-ink" : "bg-coral/15 text-coral-ink",
             )}
           >
             {isAssigned ? "Assigned" : "Unassigned"}
