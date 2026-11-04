@@ -24,6 +24,7 @@ async function giveMicrophone(page: Page) {
   await page.addInitScript(() => {
     navigator.mediaDevices.getUserMedia = async () => {
       const ctx = new AudioContext();
+      void ctx.resume().catch(() => {}); // without a click it can stay pending: don't wait for it
       const osc = ctx.createOscillator();
       const out = ctx.createMediaStreamDestination();
       osc.connect(out);
@@ -61,7 +62,7 @@ async function speak(page: Page, words: string) {
   say(words);
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByTestId("voice-clock")).toBeVisible({ timeout: 10_000 });
-  await page.waitForTimeout(1200); // enough audio for the stand-in to get something non-empty
+  await page.waitForTimeout(1800); // enough audio for the stand-in to get something non-empty
   await dialog.getByRole("button", { name: "Done" }).click();
   await expect(dialog.getByLabel("What we heard (fix it if it's wrong)")).toHaveValue(words, { timeout: 15_000 });
 }
@@ -125,6 +126,37 @@ test("speak the bill with who had what: the rows come filled in, and it saves th
     ["Curd", [myMember]],
     ["Naan", [myMember, palMember].sort()],
   ]);
+});
+
+test("no group chosen yet: it says so, fills people in once a group is chosen, and warns when the group changes", async ({ page, playwright }) => {
+  const { groupId } = await scene(page, playwright);
+  const second = await call(page.request, "post", "/api/groups", { name: `Other crew ${uid()}` });
+  const otherName = second.body.data.group.name as string;
+  const firstName = ((await call(page.request, "get", `/api/groups/${groupId}`)).body.data.group.name) as string;
+
+  await page.goto(`${BASE}/bill/new/scan?speak=1`);
+  await speak(page, "Thali non veg 140 only priya, curd 50 only me, total 190");
+  await page.getByRole("button", { name: "Use this bill" }).click();
+
+  // Two groups and none chosen: nothing is assigned, and the screen says why.
+  await expect(page.getByLabel("Item 1 name")).toBeVisible();
+  await expect(page.getByTestId("voice-hint")).toContainText("Choose a group above to fill in who had what from what you said");
+  await expect(page.getByTestId("assignees-1")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Assign by voice" })).toHaveCount(0);
+
+  const pick = async (name: string) => {
+    await page.getByLabel("Group", { exact: true }).click();
+    await page.getByRole("option", { name }).click();
+  };
+  await pick(firstName);
+  await expect(page.getByTestId("assignees-1")).toContainText("Priya Pal");
+  await expect(page.getByTestId("assignees-2")).toContainText("Vee Me");
+  await expect(page.getByTestId("voice-hint")).toHaveCount(0);
+
+  // A different group has different people: the rows are cleared and the person is told.
+  await pick(otherName);
+  await expect(page.getByTestId("group-note")).toContainText("who had what was cleared");
+  await expect(page.getByTestId("assignees-1")).toHaveCount(0);
 });
 
 test("assign by voice after a scan: names are told to the model, misspellings still land on the right person", async ({ page, playwright }) => {

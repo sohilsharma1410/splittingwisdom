@@ -437,3 +437,5 @@ worker, and have the test return its update. That forces the order the test inte
 4 full runs on `dev-ocr` after merging `dev-pi`. It passed 4 of 4 alone, and didn't appear in 6 runs on untouched `dev-pi`.
 Test files run one at a time, so the likely cause is a background timer from an earlier test colliding with `truncateAll`.
 That's unproven, and the test doesn't touch OCR code.
+
+**Handover:** `docs/PI-VOICE-HANDOVER.md` has the bring-up commands, every use case with exact phrases and results, the on-screen alerts, and the checks to run on the Pi.

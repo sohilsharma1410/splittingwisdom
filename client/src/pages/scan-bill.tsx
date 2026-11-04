@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useLocation, useSearch } from "wouter";
-import { AlertCircle, AlertTriangle, Camera, ImagePlus, Loader2, Mic, Plus, ScanLine, Trash2, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, Camera, ImagePlus, Info, Loader2, Mic, Plus, ScanLine, Trash2, X } from "lucide-react";
 import { formatPaise } from "@splittingwisdom/shared";
 import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
@@ -205,6 +205,8 @@ function ReviewForm({ photoUrl, spokenText, result, lockedGroup, onStartOver }: 
   const interpretAssign = useInterpretAssign();
   const interpretBill = useInterpretBill();
   const [spokenDoubts, setSpokenDoubts] = useState<string[]>([]);
+  // Said after the group changes: the people on the rows belonged to the old group.
+  const [groupNote, setGroupNote] = useState<string | null>(null);
   const spokenFor = useRef<number | null>(null);
   // Who is being assigned by voice: one row, or the whole bill.
   const [voiceFor, setVoiceFor] = useState<{ itemKey: string | null } | null>(null);
@@ -249,6 +251,18 @@ function ReviewForm({ photoUrl, spokenText, result, lockedGroup, onStartOver }: 
     });
   }, [spokenText, groupId, group.data?.group.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // People on a row belong to one group, so a different group means starting those rows over.
+  function changeGroup(next: number) {
+    if (next === groupId) return;
+    const hadPeople = draft.items.some((item) => item.assignees?.length);
+    if (hadPeople) {
+      setDraft((d) => ({ ...d, items: d.items.map((item) => ({ ...item, assignees: undefined })) }));
+      setGroupNote("You changed the group, so who had what was cleared. Assign again for this group.");
+    } else setGroupNote(null);
+    setGroupId(next);
+    setDirty(true);
+  }
+
   const edit = (patch: Partial<ReceiptDraft>) => { setDraft((d) => ({ ...d, ...patch })); setDirty(true); };
   type Row = ReceiptDraft["items"][number];
   const editItem = (key: string, change: (item: Row) => Row) =>
@@ -256,6 +270,14 @@ function ReviewForm({ photoUrl, spokenText, result, lockedGroup, onStartOver }: 
 
   const namedItems = draft.items.map((item, i) => ({ item, index: i })).filter(({ item }) => item.name.trim());
   const canAssignByVoice = speech && groupId !== null && linked.length > 0 && namedItems.length > 0;
+  const saidWho = !!result.extraction?.items.some((item) => item.who);
+  // Why the voice buttons aren't there, in words, instead of leaving them missing without a reason.
+  const voiceHint: string | null =
+    !speech || namedItems.length === 0 ? null
+    : groupId === null ? `Choose a group above ${saidWho ? "to fill in who had what from what you said, or " : "to "}say who had what by voice.`
+    : group.isLoading ? null
+    : linked.length === 0 ? "No one in this group has an account yet, so people can't be assigned by voice. Everyone shares each item."
+    : null;
   const voiceItem = voiceFor?.itemKey ? draft.items.find((i) => i.key === voiceFor.itemKey) : undefined;
 
   const totals = computeTotals(draft);
@@ -265,6 +287,11 @@ function ReviewForm({ photoUrl, spokenText, result, lockedGroup, onStartOver }: 
 
   async function confirm() {
     setError(null);
+    const strangers = draft.items.filter((item) => item.assignees?.some((a) => !members.some((m) => m.id === a.memberId)));
+    if (strangers.length > 0) {
+      setError(`${strangers[0].name.trim() || "An item"} is assigned to someone who isn't in this group. Clear it with "Everyone", or choose the right group.`);
+      return;
+    }
     const built = buildCreateBill(draft, { groupId, payerMemberId, memberIds: splitIds, imagePath: result.imagePath });
     if (!built.ok) { setError(built.message); return; }
     try {
@@ -353,7 +380,7 @@ function ReviewForm({ photoUrl, spokenText, result, lockedGroup, onStartOver }: 
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="scan-group">Group</Label>
-              <Select value={groupId !== null ? String(groupId) : undefined} onValueChange={(v) => { setGroupId(Number(v)); setDirty(true); }} disabled={lockedGroup !== null}>
+              <Select value={groupId !== null ? String(groupId) : undefined} onValueChange={(v) => changeGroup(Number(v))} disabled={lockedGroup !== null}>
                 <SelectTrigger id="scan-group"><SelectValue placeholder="Choose a group" /></SelectTrigger>
                 <SelectContent>
                   {(groups.data?.groups ?? []).map((g) => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
@@ -389,6 +416,18 @@ function ReviewForm({ photoUrl, spokenText, result, lockedGroup, onStartOver }: 
               </Button>
             )}
           </div>
+          {voiceHint && (
+            <p role="status" data-testid="voice-hint" className="flex items-start gap-2 rounded-lg border border-border bg-surface p-3 text-sm text-muted-foreground">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              {voiceHint}
+            </p>
+          )}
+          {groupNote && (
+            <p role="status" data-testid="group-note" className="flex items-start gap-2 rounded-lg border border-warn bg-surface p-3 text-sm text-warn">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              {groupNote}
+            </p>
+          )}
           <ul className="space-y-2">
             {draft.items.map((item, index) => (
               <li key={item.key} className={cn("rounded-xl border bg-surface p-3", item.low ? "border-2 border-warn" : "border-border")}>

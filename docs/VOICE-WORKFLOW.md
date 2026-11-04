@@ -8,7 +8,7 @@ The app knows every name it could hear (the group's members) and, on the review 
 
 1. **Tell the recogniser the words.** The server builds the Whisper prompt from the database (group members, plus the item names of the bill being edited), never from what the client sends. The D4.9 test measured this: names and dishes kept went from 171/420 to 359/420 on `tiny.en`.
 2. **Match by sound, not spelling.** `server/src/lib/speech-names.ts`: a consonant skeleton plus a spelling check, so "Karen" finds Karan and "Pria" finds Priya. Exact names win over similar ones. When two members sound alike ("Karan" and "Kiran"), the result is ambiguous and nothing is guessed.
-3. **Ask, don't guess.** An ambiguous or unknown word becomes a tappable choice on the review screen ("Which one? Karan / Kiran") instead of a silent blank.
+3. **Ask, don't guess.** An ambiguous or unknown word leaves the item blank and says why in words ("Couldn't tell who \"xyz\" is", "More than one person could be \"Kar\""). A tap-to-choose picker is not built.
 
 ## Two ways to speak
 
@@ -27,7 +27,7 @@ Build the whole-bill mic first (it's what D4.11 and D4.12 describe), and add the
 1. Tap the mic and speak. Show the recording time, with a stop button.
 2. The audio goes to the `stt` container on the Pi, is read, and is deleted straight away.
 3. An editable transcript appears. Editing it re-runs the matching without sending audio again.
-4. Under each item, chips show who it was matched to. Anything unclear is a highlighted word with the choices.
+4. Under each item, chips show who it was matched to. Anything unclear is listed with the reason and left blank.
 5. **Apply** fills the assignments. Nothing is saved until the normal **Confirm**. One tap undoes it.
 
 ## What's built (branch `dev-voice-names`)
