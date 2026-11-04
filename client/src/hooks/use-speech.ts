@@ -18,6 +18,8 @@ export interface AssignInterpretation {
 }
 export interface BillInterpretation {
   extraction: ReceiptExtraction;
+  /** Who had which dish, when a group was given and the bill said so. */
+  assignments: SpokenAssignment[];
   doubts: string[];
 }
 export interface SpokenItemRef {
@@ -62,7 +64,7 @@ export function useInterpretAssign() {
 
 export function useInterpretBill() {
   return useMutation({
-    mutationFn: (input: { text: string }) =>
+    mutationFn: (input: { text: string; groupId?: number }) =>
       apiFetch<BillInterpretation>("/api/speech/interpret", { method: "POST", body: JSON.stringify({ mode: "bill", ...input }) }),
   });
 }

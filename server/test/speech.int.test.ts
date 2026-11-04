@@ -158,6 +158,17 @@ describe("POST /api/speech/interpret", () => {
     expect(bill.totalAmount).toBe(50700);
   });
 
+  it("also says who had each dish when the bill is spoken for a group, and won't for someone else's group", async () => {
+    const text = "Naan 80 only me, paneer 300 shared by everyone";
+    const res = await alice.agent.post("/api/speech/interpret").send({ mode: "bill", text, groupId });
+    expect(res.status).toBe(200);
+    expect(res.body.data.extraction.items.map((i: { name: string }) => i.name)).toEqual(["Naan", "Paneer"]);
+    expect(res.body.data.assignments).toHaveLength(2);
+    expect(res.body.data.assignments[0].shares).toHaveLength(1);
+    expect(res.body.data.assignments[1].shares.length).toBeGreaterThanOrEqual(1);
+    expect((await bob.agent.post("/api/speech/interpret").send({ mode: "bill", text, groupId })).status).toBe(404);
+  });
+
   it("rejects nonsense input", async () => {
     expect((await alice.agent.post("/api/speech/interpret").send({ mode: "nope" })).status).toBe(400);
     expect((await alice.agent.post("/api/speech/interpret").send({ mode: "bill", text: "x".repeat(4000) })).status).toBe(400);

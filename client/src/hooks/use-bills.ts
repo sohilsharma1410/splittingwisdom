@@ -233,7 +233,7 @@ export function useDeleteBill(id: number, groupId: number) {
 export interface ReceiptExtraction {
   merchant: string | null;
   billDate: string | null;
-  items: { name: string; price: number; quantity: number; confidence: "high" | "low" }[];
+  items: { name: string; price: number; quantity: number; confidence: "high" | "low"; /** Spoken bills only: who had it, as said. */ who?: string }[];
   subtotalAmount: number | null;
   taxAmount: number | null;
   /** Tax already inside the item prices; shown for information, never added. */

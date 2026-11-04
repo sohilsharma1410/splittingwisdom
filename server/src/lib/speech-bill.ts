@@ -9,6 +9,7 @@
  * line is marked low-confidence and the line total is used, as on a printed receipt.
  */
 import { readNumber, toPaise } from "./speech-numbers.js";
+import { isPersonWord } from "./speech-split.js";
 
 export interface SpokenItem {
   name: string;
@@ -16,6 +17,8 @@ export interface SpokenItem {
   price: number;
   quantity: number;
   confidence: "high" | "low";
+  /** Who had it, as said ("shared by me and Bob"), for the split step to read. Empty when nothing was said. */
+  who: string;
 }
 
 export interface SpokenBill {
@@ -32,6 +35,8 @@ export interface SpokenBill {
 
 const FILLER = new Set(["rupees", "rupee", "rs", "inr", "at", "for", "of", "the", "a", "an", "x", "plates", "plate", "pieces", "piece", "pcs", "orders", "order", "is", "was", "it", "comes", "to", "costs", "cost", "price", "priced", "worth", "my", "we", "had", "got", "ordered", "have", "add", "added", "item", "items"]);
 const EACH = new Set(["each", "apiece", "per", "every"]);
+/** Words that start "who had it" ("curd shared by me", "thali only Bob"): not part of a dish's name. */
+const WHO_HAD_IT = new Set(["shared", "split", "by", "only", "just", "between"]);
 const TOTALISH = new Set(["total", "totalling", "totaling", "overall", "altogether", "amounting"]);
 const TAX = new Set(["tax", "taxes", "gst", "vat", "cgst", "sgst", "igst"]);
 const TIP = new Set(["tip", "tips", "gratuity"]);
@@ -87,7 +92,7 @@ function percentOf(paise: number, basisPoints: number): number {
   return Math.floor((paise * basisPoints + 5000) / 10_000);
 }
 
-export function billFromSpeech(text: string): SpokenBill {
+export function billFromSpeech(text: string, memberNames: string[] = []): SpokenBill {
   const bill: SpokenBill = { merchant: null, items: [], taxAmount: null, tipAmount: null, serviceFeeAmount: null, discountAmount: null, totalAmount: null, doubts: [] };
   const percentCharges: { field: "taxAmount" | "tipAmount" | "serviceFeeAmount" | "discountAmount"; basisPoints: number }[] = [];
 
@@ -95,6 +100,13 @@ export function billFromSpeech(text: string): SpokenBill {
     const tokens = words(segment);
     if (tokens.length === 0) continue;
     const numbers = numbersIn(tokens);
+    // "Only Bob" or "Bob, Cat" on its own is about the item just before it.
+    const lastItem = bill.items[bill.items.length - 1];
+    if (numbers.length === 0 && tokens.every((t) => WHO_HAD_IT.has(t) || t === "and" || isPersonWord(t, memberNames)) && tokens.some((t) => isPersonWord(t, memberNames))) {
+      if (lastItem) lastItem.who = `${lastItem.who} ${tokens.join(" ")}`.trim();
+      else bill.doubts.push(`Heard "${tokens.join(" ")}" before any item, so it wasn't used.`);
+      continue;
+    }
     const hasWord = (set: Set<string>) => tokens.some((t) => set.has(t));
 
     // Naming the bill: "bill name Ganbei", "at Ganbei".
@@ -142,6 +154,14 @@ export function billFromSpeech(text: string): SpokenBill {
       bill.doubts.push(`Couldn't tell what "${tokens.join(" ")}" was.`);
       continue;
     }
+    // "Curd shared by me" and "thali 140 Bob and Cat" are a dish plus who had it. The dish keeps its name.
+    let whoAt = nameTokens.findIndex((t, i) => i > 0 && WHO_HAD_IT.has(t));
+    if (whoAt < 0) {
+      whoAt = nameTokens.length;
+      while (whoAt > 1 && isPersonWord(nameTokens[whoAt - 1], memberNames)) whoAt--;
+      if (whoAt === nameTokens.length) whoAt = -1;
+    }
+    const who = whoAt > 0 ? nameTokens.splice(whoAt).join(" ") : "";
     // "2 naan 160" has a leading quantity and one price. "naan 160" is one naan. A lone
     // leading number with no name after it is the price ("160 naan" is rare, so it stays a price).
     let quantity = 1;
@@ -159,6 +179,7 @@ export function billFromSpeech(text: string): SpokenBill {
       price: lineTotal,
       quantity,
       confidence,
+      who,
     });
   }
 

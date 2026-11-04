@@ -55,3 +55,7 @@ Build the whole-bill mic first (it's what D4.11 and D4.12 describe), and add the
 ## Not built
 
 Nicknames ("Sid" for Siddharth), which need a migration, and tap-to-choose between two similar names (it explains the doubt in words and leaves the item for you to assign).
+
+## Saying who had what while speaking the bill
+
+A dictated item can carry who had it: "Thali 140, Bob and Cat", "Curd shared by me 50", "Chicken tikka 250. Only Bob." The dish keeps its own name; the people part is read by the same matcher as "Assign by voice" (names by sound, ambiguity left blank with a reason). The group is only known on the review screen when the bill wasn't started from a group, so the review screen reads the spoken text again once the group is chosen, fills the rows' people (and tidies a dish name that picked up a person's name), and lists anything it couldn't place. Nothing is saved until the normal Confirm.

@@ -92,7 +92,7 @@ router.post("/transcribe", rateLimit({ max: 40, windowMs: 60 * 60 * 1000, messag
 const itemSchema = z.object({ index: z.number().int().min(0), name: z.string().min(1).max(200), quantity: z.number().int().min(1).max(999) });
 const interpretSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("assign"), text: z.string().max(1500), groupId: z.number().int().positive(), items: z.array(itemSchema).min(1).max(100), itemIndex: z.number().int().min(0).optional() }),
-  z.object({ mode: z.literal("bill"), text: z.string().max(3000) }),
+  z.object({ mode: z.literal("bill"), text: z.string().max(3000), groupId: z.number().int().positive().optional() }),
 ]);
 
 // Text in, suggestions out. Used when someone edits the transcript, so the audio isn't sent twice.
@@ -105,7 +105,23 @@ router.post("/interpret", rateLimit({ max: 200, windowMs: 60 * 60 * 1000 }), asy
   const input = parsed.data;
 
   if (input.mode === "bill") {
-    const bill = billFromSpeech(input.text);
+    // With a group, "Thali 140 Bob and Cat" also says who had it, read the same way as "assign by voice".
+    const groupMembers = input.groupId !== undefined ? await loadMembers(input.groupId, req.session.userId!) : null;
+    if (input.groupId !== undefined && !groupMembers) {
+      res.status(404).json({ error: { message: "Group not found." } });
+      return;
+    }
+    const bill = billFromSpeech(input.text, groupMembers?.map((m) => m.name) ?? []);
+    const assignments: { itemIndex: number; shares: { memberId: number; units: number }[] }[] = [];
+    if (groupMembers) {
+      bill.items.forEach((item, itemIndex) => {
+        if (!item.who) return;
+        const result = splitFromSpeech(`zzitem ${item.who}`, [{ index: itemIndex, name: "zzitem", quantity: item.quantity }], groupMembers);
+        const shares = result.assignments[itemIndex];
+        if (shares) assignments.push({ itemIndex, shares: Object.entries(shares).map(([memberId, units]) => ({ memberId: Number(memberId), units })) });
+        bill.doubts.push(...result.doubts.map((doubt) => `${item.name}: ${doubt}`));
+      });
+    }
     const subtotal = bill.items.reduce((sum, item) => sum + item.price, 0);
     res.json({
       data: {
@@ -123,6 +139,7 @@ router.post("/interpret", rateLimit({ max: 200, windowMs: 60 * 60 * 1000 }), asy
           overallConfidence: bill.items.length > 0 ? "high" : "low",
           totalsMismatch: null,
         },
+        assignments,
         doubts: bill.doubts,
       },
     });

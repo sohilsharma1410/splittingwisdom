@@ -48,7 +48,7 @@ const UNSURE = new Set(["maybe", "might", "probably", "perhaps", "shayad", "unsu
 const PAYING = new Set(["paid", "pay", "pays", "paying", "treated", "treat", "bought"]);
 const UNKNOWN_GROUP = new Set(["we", "us", "both", "dono", "hum", "humne", "they", "them"]);
 /** Common words that must never be fuzzy-matched to a name or a dish. */
-const NOT_NAMES = new Set(["the", "and", "for", "had", "was", "were", "with", "that", "this", "have", "are", "aur", "ko", "ne", "ka", "ke", "ki", "liye", "mein", "one", "do", "is", "to", "of", "a", "an", "between", "else", "give", "there", "their", "then", "item", "dish", "sweet"]);
+const NOT_NAMES = new Set(["the", "and", "for", "had", "was", "were", "with", "that", "this", "have", "are", "aur", "ko", "ne", "ka", "ke", "ki", "liye", "mein", "one", "do", "is", "to", "of", "a", "an", "between", "else", "give", "there", "their", "then", "item", "dish", "sweet", "only", "by", "just", "also", "too"]);
 
 function editDistanceAtMostOne(a: string, b: string): boolean {
   if (a === b) return true;
@@ -78,6 +78,13 @@ function sameWord(said: string, known: string): boolean {
   if (said === known) return true;
   if (said.length < 4 || known.length < 4 || NOT_NAMES.has(said)) return false;
   return editDistanceAtMostOne(said, known);
+}
+
+/** Whether a spoken word is about people ("me", "everyone", a member's name, heard badly) rather than a dish. */
+export function isPersonWord(token: string, memberNames: string[]): boolean {
+  if (SPEAKER.has(token) || EVERYONE.has(token)) return true;
+  if (NOT_NAMES.has(token)) return false;
+  return memberNames.some((name) => words(name).some((part) => part === token || sameWord(token, part) || soundsLike(token, part)));
 }
 
 function words(text: string): string[] {

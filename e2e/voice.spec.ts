@@ -99,6 +99,34 @@ test("speak the whole bill: items, quantity, tax and total fill the review scree
   void myMember;
 });
 
+test("speak the bill with who had what: the rows come filled in, and it saves that way", async ({ page, playwright }) => {
+  const { groupId, myMember, palMember } = await scene(page, playwright);
+  await page.goto(`${BASE}/bill/new/scan?group=${groupId}`);
+  await page.getByRole("button", { name: "Speak the bill" }).click();
+  await speak(page, "Thali non veg 140 priya. Curd shared by me 50. Naan 80 shared by everyone, total 270");
+  const understood = page.getByRole("region", { name: "What we understood" });
+  await expect(understood).toContainText("Curd — ₹50.00");
+  await expect(understood).not.toContainText("Shared By");
+  await page.getByRole("button", { name: "Use this bill" }).click();
+
+  await expect(page.getByLabel("Item 2 name")).toHaveValue("Curd"); // not "Curd Shared By Me"
+  await expect(page.getByTestId("assignees-1")).toContainText("Priya Pal");
+  await expect(page.getByTestId("assignees-2")).toContainText("Vee Me");
+  await expect(page.getByTestId("assignees-2")).not.toContainText("Priya Pal");
+  await expect(page.getByTestId("assignees-3")).toContainText("Vee Me, Priya Pal");
+  await page.getByLabel("Bill name").fill("Spoken split");
+  await page.getByRole("button", { name: "Confirm bill" }).click();
+  await page.waitForURL(/\/bill\/\d+$/);
+
+  const id = Number(page.url().split("/").pop());
+  const items = (await call(page.request, "get", `/api/bills/${id}`)).body.data.bill.items as { name: string; assignments: { memberId: number }[] }[];
+  expect(items.map((i) => [i.name, i.assignments.map((a) => a.memberId).sort()])).toEqual([
+    ["Thali Non Veg", [palMember]],
+    ["Curd", [myMember]],
+    ["Naan", [myMember, palMember].sort()],
+  ]);
+});
+
 test("assign by voice after a scan: names are told to the model, misspellings still land on the right person", async ({ page, playwright }) => {
   const { groupId, palMember } = await scene(page, playwright);
   await page.goto(`${BASE}/bill/new/scan?group=${groupId}`);

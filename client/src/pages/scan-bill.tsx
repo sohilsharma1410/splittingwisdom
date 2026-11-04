@@ -105,12 +105,13 @@ export default function ScanBill() {
         open={speakOpen}
         onOpenChange={setSpeakOpen}
         title="Speak the bill"
-        example="Two paneer tikka 250 each, naan 80, GST 5 percent, total 650"
+        example="Two paneer tikka 250 each shared by me and Ravi, naan 80 only Priya, GST 5 percent, total 650"
         applyLabel="Use this bill"
+        groupId={lockedGroup ?? undefined}
         interpret={async (text) => {
-          const { extraction, doubts } = await interpretBill.mutateAsync({ text });
+          const { extraction, doubts } = await interpretBill.mutateAsync({ text, groupId: lockedGroup ?? undefined });
           const summary = extraction.items.map((i) => (
-            <span key={i.name} className="tabular-currency">{i.quantity > 1 ? `${i.quantity} × ` : ""}{i.name} — {i.price > 0 ? formatPaise(i.price) : "no price heard"}</span>
+            <span key={i.name} className="tabular-currency">{i.quantity > 1 ? `${i.quantity} × ` : ""}{i.name} — {i.price > 0 ? formatPaise(i.price) : "no price heard"}{i.who ? ` · ${i.who}` : ""}</span>
           ));
           const charge = (label: string, value: number | null) => value ? summary.push(<span key={label} className="tabular-currency">{label} — {formatPaise(value)}</span>) : 0;
           charge("Tax", extraction.taxAmount); charge("Service charge", extraction.serviceFeeAmount); charge("Tip", extraction.tipAmount);
@@ -202,6 +203,9 @@ function ReviewForm({ photoUrl, spokenText, result, lockedGroup, onStartOver }: 
   const members = group.data?.group.members ?? [];
   const speech = useSpeechAvailable();
   const interpretAssign = useInterpretAssign();
+  const interpretBill = useInterpretBill();
+  const [spokenDoubts, setSpokenDoubts] = useState<string[]>([]);
+  const spokenFor = useRef<number | null>(null);
   // Who is being assigned by voice: one row, or the whole bill.
   const [voiceFor, setVoiceFor] = useState<{ itemKey: string | null } | null>(null);
   const linked = members.filter((m) => m.isLinked);
@@ -218,6 +222,32 @@ function ReviewForm({ photoUrl, spokenText, result, lockedGroup, onStartOver }: 
     setSplitIds(members.map((m) => m.id));
     setPayerMemberId(members.find((m) => m.userId === user?.id)?.id ?? members[0].id);
   }, [group.data?.group.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A spoken bill can say who had what ("thali 140, Bob and Cat"). The people are only known once
+  // the group is, so read it again for this group and fill the rows in, for the person to check.
+  useEffect(() => {
+    if (!spokenText || groupId === null || group.data?.group.id !== groupId || spokenFor.current === groupId) return;
+    if (!result.extraction?.items.some((item) => item.who)) return;
+    spokenFor.current = groupId;
+    interpretBill.mutate({ text: spokenText, groupId }, {
+      onSuccess: ({ extraction, assignments, doubts }) => {
+        const byKey = new Map(assignments.map((a) => [initial.items[a.itemIndex]?.key, a.shares]));
+        // Knowing the people also cleans the dish names ("Thali Priya" -> "Thali"), unless they were edited meanwhile.
+        const cleaned = new Map(initial.items.map((item, i) => [item.key, extraction.items[i]?.name ?? item.name]));
+        setDraft((d) => ({
+          ...d,
+          items: d.items.map((item) => {
+            const original = initial.items.find((i) => i.key === item.key);
+            const name = original && item.name === original.name ? cleaned.get(item.key) ?? item.name : item.name;
+            return { ...item, name, ...(byKey.has(item.key) ? { assignees: byKey.get(item.key) } : {}) };
+          }),
+        }));
+        setSpokenDoubts(doubts);
+        if (assignments.length > 0) toast({ title: "Filled in who had what from what you said. Check the names, then confirm.", variant: "success" });
+      },
+      onError: () => setSpokenDoubts(["Couldn't read who had what from what you said. You can assign by voice or tick people yourself."]),
+    });
+  }, [spokenText, groupId, group.data?.group.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const edit = (patch: Partial<ReceiptDraft>) => { setDraft((d) => ({ ...d, ...patch })); setDirty(true); };
   type Row = ReceiptDraft["items"][number];
@@ -263,6 +293,13 @@ function ReviewForm({ photoUrl, spokenText, result, lockedGroup, onStartOver }: 
             <h2 className="flex items-center gap-2 text-sm font-semibold"><Mic className="h-4 w-4 text-mint-ink" aria-hidden="true" />What you said</h2>
             <p className="text-sm text-muted-foreground" data-testid="spoken-text">“{spokenText}”</p>
             <p className="text-xs text-muted-foreground">Check every line on the right. Nothing is saved until you confirm.</p>
+            {spokenDoubts.length > 0 && (
+              <ul className="space-y-1" data-testid="spoken-doubts">
+                {spokenDoubts.map((d) => (
+                  <li key={d} className="flex items-start gap-2 text-xs text-warn"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{d}</li>
+                ))}
+              </ul>
+            )}
           </section>
         )}
       </div>

@@ -79,4 +79,28 @@ describe("a bill described out loud", () => {
     expect(billFromSpeech("").items).toEqual([]);
     expect(billFromSpeech("   ").items).toEqual([]);
   });
+
+  it("keeps who had a dish out of its name and hands it on", () => {
+    const bill = billFromSpeech("Curd shared by me 50, thali non veg by only Bob 140");
+    expect(bill.items.map((i) => [i.name, i.price, i.who])).toEqual([
+      ["Curd", 5000, "shared by me"],
+      ["Thali Non Veg", 14000, "by only bob"],
+    ]);
+    expect(bill.doubts).toEqual([]);
+  });
+  it("reads names after the price, on their own, and across 'and'", () => {
+    const names = ["Ann", "Bob", "Cat"];
+    const bill = billFromSpeech("Chicken tikka 250. Only Bob. Curd 50 only me, thali 140, Bob and Cat. Chicken lollipop 250 shared by everyone. Naan 80 for Cat", names);
+    expect(bill.items.map((i) => [i.name, i.price, i.who])).toEqual([
+      ["Chicken Tikka", 25000, "only bob"],
+      ["Curd", 5000, "only me"],
+      ["Thali", 14000, "bob cat"],
+      ["Chicken Lollipop", 25000, "shared by everyone"],
+      ["Naan", 8000, "cat"],
+    ]);
+    expect(bill.doubts).toEqual([]);
+  });
+  it("doesn't take a dish for a person", () => {
+    expect(billFromSpeech("Paneer tikka 250, naan 80", ["Ann", "Bob"]).items.map((i) => [i.name, i.who])).toEqual([["Paneer Tikka", ""], ["Naan", ""]]);
+  });
 });

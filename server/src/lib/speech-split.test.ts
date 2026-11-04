@@ -81,4 +81,17 @@ describe("splitFromSpeech", () => {
   it("leaves everything blank for empty speech", () => {
     expect(split("")).toEqual({ assignments: {}, doubts: [] });
   });
+
+  it("is not thrown by 'only' and 'by', even when an item's name has them", () => {
+    const items = [
+      { index: 0, name: "Chicken Tikka", quantity: 1 },
+      { index: 1, name: "Curd Shared By Me", quantity: 1 },
+      { index: 2, name: "Thali Non-Veg By Only Me", quantity: 1 },
+      { index: 3, name: "Chicken Lollipop", quantity: 5 },
+    ];
+    const members = [{ id: 1, name: "Ann", isSpeaker: true }, { id: 2, name: "Bob" }, { id: 3, name: "Cat" }];
+    const result = splitFromSpeech("Chicken Tikka, only Bob. Curd only me, Thali Bob, Cat. Chicken Lollipop shared by everyone.", items, members);
+    expect(result.assignments).toEqual({ 0: { 2: 1 }, 1: { 1: 1 }, 2: { 2: 1, 3: 1 }, 3: { 1: 1, 2: 1, 3: 1 } });
+    expect(result.doubts).toEqual([]);
+  });
 });
