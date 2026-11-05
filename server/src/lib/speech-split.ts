@@ -7,7 +7,7 @@
  * stays unassigned, because a blank is safe and a wrong guess isn't.
  */
 
-import { soundsLike } from "./speech-names.js";
+import { matchPersonSpan, soundsLike } from "./speech-names.js";
 
 export interface SpeechItem {
   index: number;
@@ -83,7 +83,8 @@ function sameWord(said: string, known: string): boolean {
 /** Whether a spoken word is about people ("me", "everyone", a member's name, heard badly) rather than a dish. */
 export function isPersonWord(token: string, memberNames: string[]): boolean {
   if (SPEAKER.has(token) || EVERYONE.has(token)) return true;
-  if (NOT_NAMES.has(token)) return false;
+  // A number on its own is never someone, even when a name has one in it ("Pytester 2").
+  if (NOT_NAMES.has(token) || /^\d+$/.test(token)) return false;
   return memberNames.some((name) => words(name).some((part) => part === token || sameWord(token, part) || soundsLike(token, part)));
 }
 
@@ -132,6 +133,15 @@ function tagWords(text: string, items: SpeechItem[], members: SpeechMember[]): T
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
     const next = tokens[i + 1];
+
+    // A name of several words ("pi tester 1" for "Pytester 1"), or a whole name said exactly,
+    // is read first, so its number isn't a count and its words aren't keywords.
+    const span = SPEAKER.has(token) || EVERYONE.has(token) || NOT_NAMES.has(token) ? null : matchPersonSpan(tokens, i, members.map((member) => member.name));
+    if (span) {
+      tags.push({ kind: "person", ids: span.indexes.map((k) => members[k].id), word: tokens.slice(i, i + span.length).join(" ") });
+      i += span.length - 1;
+      continue;
+    }
 
     if (UNSURE.has(token)) tags.push({ kind: "stop", reason: "It sounded unsure, so nothing was filled in from that." });
     else if (NEGATIONS.has(token)) tags.push({ kind: "stop", reason: "Someone not having something can't be filled in automatically." });

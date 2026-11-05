@@ -233,6 +233,15 @@ function ReviewForm({ photoUrl, spokenText, result, lockedGroup, onStartOver }: 
     spokenFor.current = groupId;
     interpretBill.mutate({ text: spokenText, groupId }, {
       onSuccess: ({ extraction, assignments, doubts }) => {
+        // People are matched to rows by position. If this reading split the items differently
+        // (it can, once the names are known), filling rows in would put people on the wrong dishes.
+        const first = result.extraction?.items ?? [];
+        const sameRows = extraction.items.length === first.length &&
+          extraction.items.every((item, i) => item.price === first[i].price && item.quantity === first[i].quantity);
+        if (!sameRows) {
+          setSpokenDoubts(["Reading it again for this group came out differently, so who had what wasn't filled in. Assign by voice or tick people yourself."]);
+          return;
+        }
         const byKey = new Map(assignments.map((a) => [initial.items[a.itemIndex]?.key, a.shares]));
         // Knowing the people also cleans the dish names ("Thali Priya" -> "Thali"), unless they were edited meanwhile.
         const cleaned = new Map(initial.items.map((item, i) => [item.key, extraction.items[i]?.name ?? item.name]));

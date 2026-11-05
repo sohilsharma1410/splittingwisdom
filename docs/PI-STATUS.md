@@ -361,6 +361,12 @@ Given these same 60 sentences as perfect text, the matcher scores 48 / 12 / 0.
 
 Adds an `stt` container beside `ocr` (`deploy/pi/stt/`, same isolation: no internet, no Postgres, no host port) and `STT_URL: http://stt:8000` on the API. After it merges: `git pull`, `docker compose build stt api`, `docker compose up -d`, `docker compose ps` shows `stt` healthy. The build downloads `base.en` (about 145 MB) once. No key and no migration. Render and Vercel have no `STT_URL`, so the mic is hidden there. See `docs/VOICE-WORKFLOW.md`.
 
+## Language model for spoken bills (branch `dev-voice-llm`, D22)
+
+Adds an `llm` container (`deploy/pi/llm/`: llama.cpp's server with Qwen2.5 3B Instruct, same isolation as `ocr` and `stt`) and `LLM_URL: http://llm:8000` on the API. The rules read every spoken bill first; the model is asked only when they had trouble (an unpriced item, a doubt, an unknown name, a total that doesn't add up, a dish name that's really several), and its reading is used only if every amount in it was said. Bring-up and the speed check: `docs/PI-VOICE-HANDOVER.md` §1 and §5.
+
+Scores on `server/src/lib/speech-bill.eval-data.ts` (rules alone / as the app uses rules plus model): tuning sentences 8/8 / 8/8, held-out sentences 1/6 / 5/6. One held-out sentence was looked at while choosing what counts as "trouble", so 5/6 flatters a little. **Measured on the Pi** (2026-11-05, side test, live app untouched): 5.6 words/s out, 17 in; 10-25 s per reading, and 51 s for the first one after a start, before the instructions are cached (the API warms it up when a mic screen opens). About 3.8 GB resident; 61 °C, no throttling. Scores on the Pi: rules plus model 8/8 and 4/6 (one held-out sentence came out differently from the laptop).
+
 ## What runs where
 
 | | Pi | Render and Vercel | Supabase |

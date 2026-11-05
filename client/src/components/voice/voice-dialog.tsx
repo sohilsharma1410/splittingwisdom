@@ -40,6 +40,13 @@ export function VoiceDialog<T>({ open, onOpenChange, title, example, applyLabel,
   const [outcome, setOutcome] = useState<VoiceOutcome<T> | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
+  // Reading a muddled bill can need the Pi's language model, which is slow; say so after a moment.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!working) { setSlow(false); return; }
+    const timer = window.setTimeout(() => setSlow(true), 4000);
+    return () => window.clearTimeout(timer);
+  }, [working]);
   const run = useRef(0);
 
   // Each time the dialog opens, start from a clean slate and begin recording straight away.
@@ -156,6 +163,13 @@ export function VoiceDialog<T>({ open, onOpenChange, title, example, applyLabel,
                 </Button>
               </div>
             </div>
+
+            {working && (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status" aria-live="polite">
+                <Loader2 className="h-4 w-4 animate-spin text-mint-ink" aria-hidden="true" />
+                {slow ? "Still working it out. A long or muddled bill can take up to a minute." : "Working out what you said…"}
+              </p>
+            )}
 
             {outcome && (
               <section aria-label="What we understood" className="space-y-2 rounded-xl border border-border bg-surface p-3">

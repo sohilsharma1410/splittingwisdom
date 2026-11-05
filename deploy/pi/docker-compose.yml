@@ -77,10 +77,13 @@ services:
       OCR_PROVIDER: rapidocr
       OCR_URL: http://ocr:8000
       STT_URL: http://stt:8000
+      LLM_URL: http://llm:8000
+      LLM_TIMEOUT_MS: "60000"
     networks:
       - default
       - ocr
       - stt
+      - llm
     ports:
       - "127.0.0.1:4000:4000"
     volumes:
@@ -170,6 +173,43 @@ services:
       retries: 4
       start_period: 60s
 
+  # Reads a spoken bill when the rules can't (server/src/lib/speech-llm.ts): a small language
+  # model, built like ocr and stt: only on the "llm" network (no internet, no Postgres), no host
+  # port, read-only. The API doesn't wait for it: down or slow means the rules' reading is used.
+  # Measured on the Pi: about 3.8 GB resident, 5.6 words/s, 10-25 s per reading once warm. It
+  # shares ocr's cores.
+  llm:
+    image: splittingwisdom-llm:local
+    pull_policy: never
+    build: llm
+    init: true
+    restart: unless-stopped
+    networks:
+      - llm
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 4500m
+    memswap_limit: 4500m
+    cpuset: "0-2"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -fsS
+        - -o
+        - /dev/null
+        - http://127.0.0.1:8000/health
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      # Loading 2 GB from the SD card takes a while.
+      start_period: 180s
+
   # Forward sync to Supabase. Stays off until M4: start it with `--profile sync`
   # once SYNC_TARGET_DATABASE_URL is set in .env.
   sync-agent:
@@ -188,6 +228,8 @@ networks:
   ocr:
     internal: true
   stt:
+    internal: true
+  llm:
     internal: true
 
 volumes:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { soundsLike } from "./speech-names.js";
+import { matchPersonSpan, soundsLike } from "./speech-names.js";
 import { splitFromSpeech } from "./speech-split.js";
 
 // How a recogniser tends to spell these names by ear. Written by hand, not from real recordings.
@@ -80,5 +80,24 @@ describe("in a sentence", () => {
   it("still matches an exact name when two people sound alike", () => {
     const twins = [...group, { id: 5, name: "Kiran" }];
     expect(splitFromSpeech("kiran had the biryani", items, twins).assignments).toEqual({ 2: { 5: 1 } });
+  });
+});
+
+describe("names of more than one word", () => {
+  const names = ["Pi", "Sohil Sharma", "Pytester 1", "Pytester 2"];
+  const span = (text: string) => matchPersonSpan(text.split(" "), 0, names);
+  it("matches a name split and respelled by the recogniser, with its number", () => {
+    expect(span("pi tester 1")).toEqual({ length: 3, indexes: [2] });
+    expect(span("pi tester one")).toEqual({ length: 3, indexes: [2] });
+    expect(span("pytester 2 and")).toEqual({ length: 2, indexes: [3] });
+    expect(span("sohil sharma")).toEqual({ length: 2, indexes: [1] });
+  });
+  it("leaves out a number that isn't part of the name", () => {
+    expect(span("sohil 50")).toBeNull();
+    expect(span("pytester 3")).toBeNull();
+  });
+  it("takes a one-word name said exactly, but leaves fuzzy single words to the caller", () => {
+    expect(span("pi had")).toEqual({ length: 1, indexes: [0] });
+    expect(span("sohail")).toBeNull();
   });
 });

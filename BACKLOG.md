@@ -33,3 +33,4 @@ Bill Settled/Pending is now derived from bills + settlements (`shared/lib/settle
 ## Debt loops that cancel out (follow-up to simplify debts)
 
 Paying a simplified suggestion is now recorded as the chain of real debts it stands for, so chains leave nothing behind. A loop of debts that nets to zero (Ann owes Bob, Bob owes Cat, Cat owes Ann) still shows in the Direct tab, with the Simplified tab saying "everyone is settled overall". Consider an explicit "clear offsetting debts" action that records the loop as settlements, once real groups show it matters.
+- Language model for "assign by voice" too (D22 only covers spoken bills). Ask it only when the rules leave items unassigned, and keep the rules' refusals (negation, unsure, "paid"). Needs its own test sentences first, like `speech-split.eval-data.ts`.

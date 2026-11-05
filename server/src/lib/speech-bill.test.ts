@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readNumber, toPaise } from "./speech-numbers.js";
 import { billFromSpeech } from "./speech-bill.js";
+import { BILL_DEV_CASES, BILL_HELD_OUT_CASES, BILL_MEMBERS, gradeBill, type BillCase } from "./speech-bill.eval-data.js";
 
 const paise = (text: string) => {
   const n = readNumber(text.split(" "), 0);
@@ -102,5 +103,74 @@ describe("a bill described out loud", () => {
   });
   it("doesn't take a dish for a person", () => {
     expect(billFromSpeech("Paneer tikka 250, naan 80", ["Ann", "Bob"]).items.map((i) => [i.name, i.who])).toEqual([["Paneer Tikka", ""], ["Naan", ""]]);
+  });
+});
+
+describe("a bill spoken the way people actually pause (real recordings on the Pi)", () => {
+  const group = ["Pi", "Sohil", "Pytester 1", "Pytester 2"];
+  const read = (text: string, names: string[] = group) => billFromSpeech(text, names).items.map((i) => [i.name, i.quantity, i.price, i.who]);
+  const said = "2 watermelon juice, 150 each, shared by me and Sohil. 1 coconut pudding, 500 rupees, shared by Pytester 2 and Pytester 1. 1 guitar avocado toast, 2 25 rupees, had by Sohil.";
+
+  it("keeps a price said after a comma with its item, and the people too", () => {
+    expect(read(said)).toEqual([
+      ["Watermelon Juice", 2, 30000, "shared by me sohil"],
+      ["Coconut Pudding", 1, 50000, "shared by pytester 2 pytester 1"],
+      ["Guitar Avocado Toast", 1, 22500, "had by sohil"],
+    ]);
+  });
+  it("does the same before a group is chosen", () => {
+    expect(read(said, [])).toEqual([
+      ["Watermelon Juice", 2, 30000, "shared by me sohil"],
+      ["Coconut Pudding", 1, 50000, "shared by pytester 2 pytester 1"],
+      ["Guitar Avocado Toast", 1, 22500, "had by sohil"],
+    ]);
+  });
+  it("reads '2 25 rupees' as 225, and asks for it to be checked", () => {
+    const bill = billFromSpeech(said, group);
+    expect(bill.items[2].confidence).toBe("low");
+    expect(bill.doubts).toEqual(['Guitar Avocado Toast: heard "2 25" as 225. Check the price.']);
+  });
+  it("never takes the number in someone's name for a price", () => {
+    expect(read("Coconut pudding 500 split by pi tester 1 and Sohil")).toEqual([["Coconut Pudding", 1, 50000, "split by pi tester 1 sohil"]]);
+    expect(read("paneer tikka 300 split by pi tester one and Sohil", [])).toEqual([["Paneer Tikka", 1, 30000, "split by pi tester one sohil"]]);
+  });
+  it("takes the restaurant's name however it's said", () => {
+    for (const text of ["We ate at Ganbei. Naan 80", "Dinner at Ganbei, naan 80", "Restaurant name is Ganbei, naan 80", "Restaurant Ganbei. Naan 80", "Bill name Ganbei, naan 80"]) {
+      const bill = billFromSpeech(text, group);
+      expect([text, bill.merchant, bill.items.map((i) => i.name)]).toEqual([text, "Ganbei", ["Naan"]]);
+    }
+  });
+  it("keeps 'and' inside a dish when the first half has no price", () => {
+    expect(read("mac and cheese 300 only Sohil, naan 80 and dal 120")).toEqual([
+      ["Mac And Cheese", 1, 30000, "only sohil"],
+      ["Naan", 1, 8000, ""],
+      ["Dal", 1, 12000, ""],
+    ]);
+  });
+  it("won't fill in anyone for a dish when a name said for it isn't in the group", () => {
+    const bill = billFromSpeech("paneer tikka 250 shared by me and Ravi, naan 80 only Priya", group);
+    expect(bill.items.map((i) => [i.name, i.price, i.whoUnclear])).toEqual([["Paneer Tikka", 25000, true], ["Naan", 8000, true]]);
+    expect(bill.doubts).toEqual([
+      `Paneer Tikka: couldn't tell who "ravi" is, so nobody was filled in for it.`,
+      `Naan: couldn't tell who "priya" is, so nobody was filled in for it.`,
+    ]);
+  });
+  it("says so when a price comes with no item, instead of making one up", () => {
+    const bill = billFromSpeech("naan 80, 90", group);
+    expect(bill.items.map((i) => [i.name, i.price])).toEqual([["Naan", 8000]]);
+    expect(bill.doubts).toEqual([`Couldn't tell what "90" was.`]);
+  });
+});
+
+describe("the bill test sentences (speech-bill.eval-data.ts)", () => {
+  const names = BILL_MEMBERS.map((m) => m.name);
+  const failures = (cases: BillCase[]) => cases.map((c) => [c.text, gradeBill(billFromSpeech(c.text, names), c)] as const).filter(([, wrong]) => wrong.length > 0);
+
+  it("gets the tuning sentences right", () => {
+    expect(failures(BILL_DEV_CASES)).toEqual([]);
+  });
+  it("gets at least as many held-out sentences right as when the language model was added", () => {
+    // These are what the language model is for. Raise this only for a real improvement.
+    expect(BILL_HELD_OUT_CASES.length - failures(BILL_HELD_OUT_CASES).length).toBeGreaterThanOrEqual(1);
   });
 });

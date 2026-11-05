@@ -9,7 +9,8 @@ import { getMembership } from "../middleware/authorize.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { buildPrompt, sttAvailable, transcribe } from "../lib/speech-stt.js";
 import { splitFromSpeech, type SpeechMember } from "../lib/speech-split.js";
-import { billFromSpeech } from "../lib/speech-bill.js";
+import { billAssignments, billFromSpeech } from "../lib/speech-bill.js";
+import { billFromModel, chooseReading, rulesNeedHelp, warmModel } from "../lib/speech-llm.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -28,7 +29,10 @@ async function loadMembers(groupId: number, userId: number): Promise<SpeechMembe
 // Whether speech works on this server. The client hides the mic when it doesn't (for example
 // on the standby, which can't run it).
 router.get("/status", async (_req, res) => {
-  res.json({ data: { available: await sttAvailable() } });
+  const available = await sttAvailable();
+  // Someone is about to speak a bill: have the model ready.
+  if (available) warmModel();
+  res.json({ data: { available } });
 });
 
 const transcribeFields = z.object({
@@ -111,17 +115,14 @@ router.post("/interpret", rateLimit({ max: 200, windowMs: 60 * 60 * 1000 }), asy
       res.status(404).json({ error: { message: "Group not found." } });
       return;
     }
-    const bill = billFromSpeech(input.text, groupMembers?.map((m) => m.name) ?? []);
-    const assignments: { itemIndex: number; shares: { memberId: number; units: number }[] }[] = [];
-    if (groupMembers) {
-      bill.items.forEach((item, itemIndex) => {
-        if (!item.who) return;
-        const result = splitFromSpeech(`zzitem ${item.who}`, [{ index: itemIndex, name: "zzitem", quantity: item.quantity }], groupMembers);
-        const shares = result.assignments[itemIndex];
-        if (shares) assignments.push({ itemIndex, shares: Object.entries(shares).map(([memberId, units]) => ({ memberId: Number(memberId), units })) });
-        bill.doubts.push(...result.doubts.map((doubt) => `${item.name}: ${doubt}`));
-      });
-    }
+    // The rules always run. Where they had trouble and there's a language model (the Pi), it reads
+    // it too; its reading is used only if every number in it was said and it has less trouble.
+    const names = groupMembers?.map((m) => m.name) ?? [];
+    const speakerName = groupMembers?.find((m) => m.isSpeaker)?.name ?? null;
+    const rules = billFromSpeech(input.text, names);
+    const model = rulesNeedHelp(rules) ? await billFromModel(input.text, names, speakerName) : null;
+    const { bill, source } = chooseReading(rules, model);
+    const assignments = groupMembers ? billAssignments(bill, groupMembers) : [];
     const subtotal = bill.items.reduce((sum, item) => sum + item.price, 0);
     res.json({
       data: {
@@ -141,6 +142,7 @@ router.post("/interpret", rateLimit({ max: 200, windowMs: 60 * 60 * 1000 }), asy
         },
         assignments,
         doubts: bill.doubts,
+        reader: source,
       },
     });
     return;

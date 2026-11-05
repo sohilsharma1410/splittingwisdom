@@ -1,18 +1,19 @@
 # Voice on the Pi: handover
 
-For the Pi developer taking this over. Everything runs **on the Pi with a local model**: speech is recognised by faster-whisper `base.en` inside the `stt` container, and the words are turned into assignments by plain rules in the API (`server/src/lib/speech-*.ts`). No cloud, no key, no language model, nothing leaves the Pi. Background and measurements: `docs/VOICE-WORKFLOW.md`, `docs/PI-STATUS.md`.
+For the Pi developer taking this over. Everything runs **on the Pi with local models**: speech is recognised by faster-whisper `base.en` inside the `stt` container, and the words are turned into a bill and assignments by plain rules in the API (`server/src/lib/speech-*.ts`). When the rules have trouble with a spoken bill, a small language model in the `llm` container (Qwen2.5 3B, llama.cpp) reads it too, and its reading is used only if every amount in it was actually said (D22). No cloud, no key, nothing leaves the Pi. Background and measurements: `docs/VOICE-WORKFLOW.md`, `docs/PI-STATUS.md`.
 
 ## 1. Bring it up
 
 ```bash
 git pull origin main
 cd deploy/pi
-docker compose build stt api      # downloads base.en (about 145 MB) once, into the image
+docker compose build stt llm api  # downloads base.en (about 145 MB) and the language model (about 2.1 GB) once, into the images
 docker compose up -d
-docker compose ps                 # stt and api must both say "healthy"
+docker compose ps                 # stt, llm and api must all say "healthy" (llm takes a minute or two to load)
 ```
 
-- `STT_URL: http://stt:8000` is already set on the `api` service. There is no key and no migration.
+- `STT_URL: http://stt:8000` and `LLM_URL: http://llm:8000` are already set on the `api` service. There is no key and no migration.
+- `llm` is isolated the same way as `stt`, on its own internal `llm` network, with a 4500 MB cap on cores 0–2 (it uses about 3.8 GB). If it's down or slower than `LLM_TIMEOUT_MS` (60 s on the Pi), the rules' reading is used; nothing else changes.
 - `stt` is on an internal-only network (no internet, no Postgres, no host port), read-only, 1500 MB cap, cores 0–2 (shared with `ocr`).
 - If `stt` is down or `STT_URL` is unset, the API reports speech unavailable and **every mic is hidden**; the app works as before. Render and Vercel have no `STT_URL`, so they never show a mic.
 
@@ -105,6 +106,23 @@ The dialog shows the transcript in an editable box. Fix a word, press **Check th
 
 ## 4. How it works, in one screen
 
+Spoken bills ("Speak the bill") go through the rules first, then the language model only if needed:
+
+```
+text ──▶ speech-bill.ts (rules) ──no trouble──▶ review screen
+              │ trouble: unpriced item, doubt, unknown name, total off, a dish name of 5+ words
+              ▼
+         speech-llm.ts ──▶ llm container (Qwen2.5 3B) ──▶ JSON
+              │ checks: every price, quantity, percentage and total must have been said
+              │ (else the whole answer is set aside); people are matched to the group here;
+              │ arithmetic in paise here, never by the model
+              ▼
+         the reading with less trouble ──▶ review screen
+```
+
+The API warms the model up (reads its instructions once) when someone opens a screen with a mic, and logs `Language model read a spoken bill in N s` for each reading, never the words. Assigning by voice (sections C–E) is still rules only.
+
+
 ```
 phone mic ──audio──▶ API /api/speech/transcribe ──▶ stt container (Whisper base.en, local)
                       │  prompt = group's names + bill's item names, read from the DB (never from the client)
@@ -121,6 +139,13 @@ phone mic ──audio──▶ API /api/speech/transcribe ──▶ stt containe
 - Model: `STT_MODEL` (default `base.en`) and `STT_MODELS_DIR` (default `/models`) in `deploy/pi/stt/server.py`. int8, 3 threads, beam 1, temperature 0, VAD on, no retries.
 
 ## 5. Prove it works on your Pi
+
+0. **Language model speed and accuracy** (needs the stack up):
+   ```bash
+   docker compose logs api | grep "Language model"        # after speaking a muddled bill: "read a spoken bill in N s"
+   docker compose exec llm curl -s http://127.0.0.1:8000/health
+   ```
+   Speak the first DEV sentence in `server/src/lib/speech-bill.eval-data.ts` with a pause after every comma. If readings take more than about 40 s, try Qwen2.5 1.5B instead (faster, less accurate: 2 of 6 held-out sentences against 4): build `llm` with `--build-arg MODEL_URL=https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf --build-arg MODEL_SHA256=6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e`. To score a model on all the test sentences from a laptop: `LLM_URL=... npx tsx server/scripts/speech-llm-eval.ts` (see the script's header).
 
 1. **Machine checks** (no audio needed):
    ```bash
@@ -146,6 +171,9 @@ phone mic ──audio──▶ API /api/speech/transcribe ──▶ stt containe
 | Names heard wrong | Check the name is in the group (the prompt is built from the group's members); a name Whisper keeps mangling is the nickname case, which is not built |
 | An item left blank with "could be more than one item" | Two items share a word ("Butter Naan", "Butter Chicken"): say more of the name |
 | stt container killed | 1500 MB cap hit; look at `docker compose logs stt` and `docker stats` |
+| A muddled spoken bill takes a long time | The language model is reading it; `docker compose logs api \| grep "Language model"` shows how long. Over 60 s and the rules' reading is used |
+| `Language model's answer was set aside: …` in the log | The model gave a number that wasn't said, so its reading was thrown away and the rules' was used. Expected now and then |
+| llm container killed or slow to start | It uses about 3.8 GB and loads 2 GB from the SD card; check `docker compose logs llm` and `free -h` |
 
 ## 7. Not built (on purpose)
 
