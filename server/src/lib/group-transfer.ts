@@ -140,6 +140,7 @@ export async function importGroups(
               serviceFeeAmount: bill.serviceFeeAmount,
               discountAmount: bill.discountAmount,
               paidByMemberId: idOf(bill.paidBy),
+              payers: bill.payers ? bill.payers.map((p) => ({ memberId: idOf(p.member), amount: p.amount })) : null,
               receiptImageUrl: receiptPaths.get(`${g}:${b}`) ?? null,
               createdByUserId: user.id,
               createdAt: new Date(bill.createdAt),

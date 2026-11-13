@@ -50,8 +50,20 @@ export function computeItemShares(item: BillItemForBalance): Map<number, number>
   }
 }
 
+/** One of several people who paid a bill, and how much they paid. */
+export interface BillPayer {
+  memberId: number;
+  amount: number;
+}
+
 export interface BillForBalance {
+  /** The payer when one person paid. With several payers, the one who paid most (for display only). */
   paidByMemberId: number;
+  /**
+   * null: paidByMemberId paid the whole bill. Otherwise everyone who paid and how much, adding up
+   * to the bill's grand total exactly.
+   */
+  payers: BillPayer[] | null;
   taxAmount: number;
   tipAmount: number;
   serviceFeeAmount: number;
@@ -128,6 +140,83 @@ export function computeBillBreakdown(bill: BillForBalance): BillBreakdownRow[] {
     });
 }
 
+/** One debt a bill creates: `debtorId` owes `creditorId` this many paise. */
+export interface BillDebt {
+  debtorId: number;
+  creditorId: number;
+  amount: number;
+}
+
+/**
+ * Who owes whom because of one bill. The single source of truth for a bill's debts: the balances
+ * and the bill's Settled/Pending status both use it.
+ *
+ * One payer: everyone else owes the payer their share, exactly as before several payers existed.
+ *
+ * Several payers: each payer is first credited with part of what was assigned, in proportion to
+ * what they paid (so anything assigned to nobody is absorbed by the payers the same way). Each
+ * person's balance on the bill is then credit minus share. Those below zero owe those above zero,
+ * each debt in proportion to what the creditor is owed, rounded to whole paise so every person's
+ * debts add up to exactly what they owe and every creditor receives exactly what they're owed.
+ * Someone who paid exactly their own share owes and is owed nothing.
+ */
+export function computeBillDebts(bill: BillForBalance): BillDebt[] {
+  const breakdown = computeBillBreakdown(bill);
+
+  if (!bill.payers || bill.payers.length === 0) {
+    return breakdown
+      .filter((row) => row.memberId !== bill.paidByMemberId && row.total !== 0)
+      .map((row) => ({ debtorId: row.memberId, creditorId: bill.paidByMemberId, amount: row.total }));
+  }
+
+  const assigned = breakdown.reduce((sum, row) => sum + row.total, 0);
+  const credit =
+    assigned > 0
+      ? allocateProportionally(assigned, new Map(bill.payers.map((p) => [p.memberId, p.amount])))
+      : new Map<number, number>();
+  const net = new Map<number, number>();
+  for (const [memberId, amount] of credit) net.set(memberId, amount);
+  for (const row of breakdown) net.set(row.memberId, (net.get(row.memberId) ?? 0) - row.total);
+
+  const ids = [...net.keys()].sort((a, b) => a - b);
+  const debtors = ids.filter((id) => net.get(id)! < 0).map((id) => ({ id, owes: -net.get(id)! }));
+  const creditors = ids.filter((id) => net.get(id)! > 0).map((id) => ({ id, owed: net.get(id)! }));
+  const totalOwed = creditors.reduce((sum, c) => sum + c.owed, 0);
+  if (totalOwed === 0) return [];
+
+  // Proportional amounts, rounded down. BigInt keeps the products exact for any bill size.
+  const cells = debtors.map((d) =>
+    creditors.map((c) => Number((BigInt(d.owes) * BigInt(c.owed)) / BigInt(totalOwed))),
+  );
+  // Rounding leaves each debtor a few paise short, and each creditor too, by the same total.
+  // Hand those paise out in member-id order, which keeps both sides exact.
+  const debtorLeft = debtors.map((d, i) => d.owes - cells[i].reduce((a, b) => a + b, 0));
+  const creditorLeft = creditors.map((c, j) => c.owed - cells.reduce((sum, row) => sum + row[j], 0));
+  let i = 0;
+  let j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const give = Math.min(debtorLeft[i], creditorLeft[j]);
+    cells[i][j] += give;
+    debtorLeft[i] -= give;
+    creditorLeft[j] -= give;
+    if (debtorLeft[i] === 0) i++;
+    if (creditorLeft[j] === 0) j++;
+  }
+
+  const debts: BillDebt[] = [];
+  debtors.forEach((d, di) =>
+    creditors.forEach((c, ci) => {
+      if (cells[di][ci] > 0) debts.push({ debtorId: d.id, creditorId: c.id, amount: cells[di][ci] });
+    }),
+  );
+  return debts;
+}
+
+/** What each person paid towards a bill whose grand total is given. */
+export function billPayments(bill: Pick<BillForBalance, "paidByMemberId" | "payers">, grandTotal: number): BillPayer[] {
+  return bill.payers && bill.payers.length > 0 ? bill.payers : [{ memberId: bill.paidByMemberId, amount: grandTotal }];
+}
+
 /**
  * Computes every pairwise balance implied by a set of bills and settlements
  * within a group. Pure and deterministic: same inputs always produce the
@@ -151,10 +240,7 @@ export function computeBalances(
   }
 
   for (const bill of bills) {
-    const breakdown = computeBillBreakdown(bill);
-    for (const row of breakdown) {
-      addDebt(row.memberId, bill.paidByMemberId, row.total);
-    }
+    for (const debt of computeBillDebts(bill)) addDebt(debt.debtorId, debt.creditorId, debt.amount);
   }
 
   for (const settlement of settlements) {
@@ -208,7 +294,7 @@ export interface MemberSummary {
   unassigned: number;
   /** What this member had: their share of every bill, tax, tip, fees and discounts included. */
   share: number;
-  /** The grand totals of the bills this member paid for. Settlements are not included. */
+  /** What this member paid towards bills: whole grand totals, or their part when several paid. Settlements are not included. */
   paid: number;
   /** After settlements. Positive: the others owe this member overall. Negative: they owe the others. */
   net: number;
@@ -234,7 +320,7 @@ export function summarizeMember(
     const assigned = rows.reduce((sum, row) => sum + row.total, 0);
     groupSpent += bill.grandTotal;
     unassigned += bill.grandTotal - assigned;
-    if (bill.paidByMemberId === memberId) paid += bill.grandTotal;
+    paid += billPayments(bill, bill.grandTotal).find((p) => p.memberId === memberId)?.amount ?? 0;
     return rows.find((row) => row.memberId === memberId)?.total ?? 0;
   });
 

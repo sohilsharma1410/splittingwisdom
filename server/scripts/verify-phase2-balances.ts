@@ -75,6 +75,7 @@ async function main() {
     }));
     const newBreakdown = computeBillBreakdown({
       paidByMemberId: bill.paidByMemberId,
+      payers: bill.payers,
       taxAmount: bill.taxAmount,
       tipAmount: bill.tipAmount,
       serviceFeeAmount: bill.serviceFeeAmount,

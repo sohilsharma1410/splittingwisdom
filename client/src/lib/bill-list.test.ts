@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterAndSortBills, type ListableBill } from "./bill-list";
+import { filterAndSortBills, groupByDay, type ListableBill } from "./bill-list";
 
 const bill = (id: number, description: string, merchant: string | null, billDate: string, createdAt: string): ListableBill => ({ id, description, merchant, billDate, createdAt });
 const bills = [
@@ -30,5 +30,31 @@ describe("searching and sorting a group's bills", () => {
     expect(filterAndSortBills(bills, "xyz", "added")).toEqual([]);
     filterAndSortBills(bills, "", "billDate");
     expect(bills).toEqual(copy);
+  });
+});
+
+describe("date headings and the date range", () => {
+  it("only keeps bills dated inside the range, both ends included", () => {
+    expect(ids(filterAndSortBills(bills, "", "billDate", { from: "2026-11-10", to: "2026-11-12" }))).toEqual([2, 1]);
+    expect(ids(filterAndSortBills(bills, "", "billDate", { from: "2026-11-11", to: "" }))).toEqual([2]);
+    expect(ids(filterAndSortBills(bills, "", "billDate", { from: "", to: "2026-11-01" }))).toEqual([3]);
+  });
+
+  it("reads a range typed backwards the right way round, and combines with search", () => {
+    expect(ids(filterAndSortBills(bills, "", "billDate", { from: "2026-11-12", to: "2026-11-10" }))).toEqual([2, 1]);
+    expect(ids(filterAndSortBills(bills, "ganbei", "billDate", { from: "2026-11-11", to: "" }))).toEqual([]);
+  });
+
+  it("groups a sorted list under one heading per day, by the date it's sorted by", () => {
+    const sameDay = [...bills, bill(4, "Lunch", null, "2026-11-10", "2026-11-10T13:00:00Z")];
+    const byBillDate = groupByDay(filterAndSortBills(sameDay, "", "billDate"), "billDate");
+    expect(byBillDate.map((g) => [g.day, ids(g.bills)])).toEqual([
+      ["2026-11-12", [2]],
+      ["2026-11-10", [1, 4]],
+      ["2026-11-01", [3]],
+    ]);
+    const byAdded = groupByDay(filterAndSortBills(sameDay, "", "added"), "added");
+    expect(byAdded.map((g) => g.bills.length).reduce((a, b) => a + b, 0)).toBe(4);
+    expect(new Set(byAdded.map((g) => g.day)).size).toBe(byAdded.length);
   });
 });

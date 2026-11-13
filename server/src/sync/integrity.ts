@@ -5,6 +5,7 @@ import {
   computeBillBreakdown,
   billGrandTotal,
   type BillForBalance,
+  type BillPayer,
   type SettlementForBalance,
   type SyncedTable,
 } from "@splittingwisdom/shared";
@@ -85,10 +86,10 @@ export async function loadBalanceData(db: Queryable): Promise<BalanceData> {
   const [bills, items, assignments, settlements] = await Promise.all([
     db.unsafe<
       {
-        id: number; group_id: number; paid_by_member_id: number; subtotal_amount: number;
+        id: number; group_id: number; paid_by_member_id: number; payers: BillPayer[] | null; subtotal_amount: number;
         tax_amount: number; tip_amount: number; service_fee_amount: number; discount_amount: number;
       }[]
-    >(`SELECT id, group_id, paid_by_member_id, subtotal_amount, tax_amount, tip_amount, service_fee_amount, discount_amount FROM bills ORDER BY id`),
+    >(`SELECT id, group_id, paid_by_member_id, payers, subtotal_amount, tax_amount, tip_amount, service_fee_amount, discount_amount FROM bills ORDER BY id`),
     db.unsafe<{ id: number; bill_id: number; price: number }[]>(`SELECT id, bill_id, price FROM bill_items ORDER BY id`),
     db.unsafe<
       { bill_item_id: number; member_id: number; split_type: "equal" | "percentage" | "ratio" | "custom"; percentage: number | null; ratio: number | null; custom_amount: number | null }[]
@@ -124,6 +125,7 @@ export async function loadBalanceData(db: Queryable): Promise<BalanceData> {
         assignedPrices: assigned.reduce((s, i) => s + i.price, 0),
         engine: {
           paidByMemberId: b.paid_by_member_id,
+          payers: b.payers,
           taxAmount: b.tax_amount,
           tipAmount: b.tip_amount,
           serviceFeeAmount: b.service_fee_amount,

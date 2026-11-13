@@ -10,6 +10,7 @@ import {
   billGrandTotal,
   computeBillBreakdown,
   computeItemShares,
+  computeBillDebts,
   type BillItemForBalance,
 } from "@splittingwisdom/shared";
 import { db } from "../db.js";
@@ -117,15 +118,17 @@ router.get("/:personId", async (req, res) => {
     billDate: string;
     payerIsMe: boolean;
     payerName: string;
+    payerNames: string[] | null;
     grandTotal: number;
     theirShare: number;
+    owed: number;
     items: { itemId: number; name: string; price: number; splitType: string; share: number }[];
   }[] = [];
 
   for (const target of targets) {
     const myMemberId = target.myMemberId;
 
-    const [group, groupBills, counterpartyMember, myMember] = await Promise.all([
+    const [group, groupBills, counterpartyMember, myMember, allMembers] = await Promise.all([
       db.query.groups.findFirst({ where: eq(groups.id, target.groupId) }),
       db.query.bills.findMany({
         where: eq(bills.groupId, target.groupId),
@@ -136,7 +139,9 @@ router.get("/:personId", async (req, res) => {
         with: { user: { columns: { displayName: true } } },
       }),
       db.query.groupMembers.findFirst({ where: eq(groupMembers.id, myMemberId) }),
+      db.query.groupMembers.findMany({ where: eq(groupMembers.groupId, target.groupId), columns: { id: true, displayName: true } }),
     ]);
+    const groupMemberNames = new Map(allMembers.map((m) => [m.id, m.displayName]));
     if (!group || !counterpartyMember || !myMember) continue;
 
     displayName = counterpartyMember.user?.displayName ?? counterpartyMember.displayName;
@@ -152,42 +157,32 @@ router.get("/:personId", async (req, res) => {
           customAmount: a.customAmount,
         })),
       }));
-      const breakdown = computeBillBreakdown({
+      const forBalance = {
         paidByMemberId: bill.paidByMemberId,
+        payers: bill.payers,
         taxAmount: bill.taxAmount,
         tipAmount: bill.tipAmount,
         serviceFeeAmount: bill.serviceFeeAmount,
         discountAmount: bill.discountAmount,
         items: balanceItems,
-      });
+      };
+      const breakdown = computeBillBreakdown(forBalance);
       if (breakdown.length === 0) continue;
 
-      const payerIsMe = bill.paidByMemberId === myMemberId;
-      const payerIsThem = bill.paidByMemberId === target.counterpartyMemberId;
+      // What this bill makes the two of us owe each other, from the same engine as the balances.
+      // Positive: they owe me. With one payer this is just the other person's share.
+      const effect = computeBillDebts(forBalance).reduce((sum, d) => {
+        if (d.debtorId === target.counterpartyMemberId && d.creditorId === myMemberId) return sum + d.amount;
+        if (d.debtorId === myMemberId && d.creditorId === target.counterpartyMemberId) return sum - d.amount;
+        return sum;
+      }, 0);
+      if (effect === 0) continue;
 
-      let effect = 0;
-      let theirShare = 0;
-      // The relevant person for the item-level "what's driving this" list:
-      // the counterparty when I paid (they owe me), or me when they paid.
-      let relevantMemberId: number | null = null;
-
-      if (payerIsMe) {
-        const row = breakdown.find((r) => r.memberId === target.counterpartyMemberId);
-        if (row) {
-          theirShare = row.total;
-          effect = theirShare; // they owe me
-          relevantMemberId = target.counterpartyMemberId;
-        }
-      } else if (payerIsThem) {
-        const row = breakdown.find((r) => r.memberId === myMemberId);
-        if (row) {
-          theirShare = row.total;
-          effect = -theirShare; // I owe them
-          relevantMemberId = myMemberId;
-        }
-      }
-
-      if (effect === 0 || relevantMemberId === null) continue;
+      const payerIsMe = effect > 0;
+      // The item list shows what the person who owes had on this bill.
+      const relevantMemberId = payerIsMe ? target.counterpartyMemberId : myMemberId;
+      const theirShare = breakdown.find((r) => r.memberId === relevantMemberId)?.total ?? 0;
+      const payerNames = (bill.payers ?? []).map((p) => (p.memberId === myMemberId ? "You" : groupMemberNames.get(p.memberId) ?? "Someone"));
 
       const items = bill.items.flatMap((item) => {
         const assignment = item.assignments.find((a) => a.memberId === relevantMemberId);
@@ -221,8 +216,10 @@ router.get("/:personId", async (req, res) => {
         billDate: bill.billDate,
         payerIsMe,
         payerName: bill.paidBy.displayName,
+        payerNames: payerNames.length > 0 ? payerNames : null,
         grandTotal: billGrandTotal(bill),
         theirShare,
+        owed: Math.abs(effect),
         items,
       });
     }

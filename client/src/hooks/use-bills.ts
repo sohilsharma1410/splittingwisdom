@@ -13,6 +13,8 @@ export interface GroupBillSummary {
   /** The viewer's share of this bill, tax and tip included. 0 when they had nothing on it. */
   myShare: number;
   paidByName: string;
+  /** 1 when one person paid; more when several did (paidByName is whoever paid most). */
+  payerCount: number;
   status: "pending" | "settled";
   createdAt: string;
 }
@@ -75,6 +77,8 @@ export interface BillDetail {
   grandTotal: number;
   paidByMemberId: number;
   paidByName: string;
+  /** Everyone who paid and how much, or null when paidByName paid it all. */
+  payers: { memberId: number; displayName: string; amount: number }[] | null;
   status: "pending" | "settled";
   hasReceipt: boolean;
   createdByName: string;
@@ -120,6 +124,8 @@ export interface CreateBillInput {
   serviceFeeAmount: number;
   discountAmount: number;
   paidByMemberId?: number;
+  /** Several payers and their amounts (paise), adding up to the grand total. null: one payer. */
+  payers?: { memberId: number; amount: number }[] | null;
   /** Path returned by /api/bills/extract for the scanned photo. The server only accepts paths you uploaded. */
   receiptImageUrl?: string;
   items: BillItemInput[];
@@ -136,6 +142,7 @@ export interface ActivityBillItem {
   itemCount: number;
   unassignedItemCount: number;
   paidByName: string;
+  payerCount: number;
   status: "pending" | "settled";
   hasReceipt: boolean;
   myShare: number;

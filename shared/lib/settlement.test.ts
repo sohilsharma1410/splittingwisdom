@@ -19,7 +19,7 @@ const A = 1, B = 2, C = 3, D = 4, E = 5;
 
 function bill(paidBy: number, price: number, memberIds: number[]): BillForBalance {
   return {
-    paidByMemberId: paidBy,
+    paidByMemberId: paidBy, payers: null,
     taxAmount: 0,
     tipAmount: 0,
     serviceFeeAmount: 0,

@@ -1,6 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
-import { eq, inArray, and, isNull } from "drizzle-orm";
+import { eq, inArray, and, isNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   insertGroupSchema,
@@ -284,6 +284,7 @@ router.get("/:id/bills", requireGroupMember("id"), async (req, res) => {
         grandTotal: billGrandTotal(b),
         myShare: billShares[index],
         paidByName: b.paidBy.displayName,
+        payerCount: b.payers?.length ?? 1,
         status: statuses.get(b.id) ?? "pending",
         createdAt: b.createdAt,
       })),
@@ -384,6 +385,16 @@ router.delete("/:id/members/:memberId", requireGroupMember("id"), async (req, re
   const memberId = Number(req.params.memberId);
   if (!Number.isInteger(memberId)) {
     res.status(404).json({ error: { message: "Member not found." } });
+    return;
+  }
+
+  // Payers on a bill with several are a list on the bill, which no foreign key guards.
+  const paidSomething = await db.query.bills.findFirst({
+    where: and(eq(bills.groupId, res.locals.groupId!), sql`${bills.payers} @> ${JSON.stringify([{ memberId }])}::jsonb`),
+    columns: { id: true },
+  });
+  if (paidSomething) {
+    res.status(409).json({ error: { message: "Can't remove someone who's paid for or is part of a bill in this group." } });
     return;
   }
 

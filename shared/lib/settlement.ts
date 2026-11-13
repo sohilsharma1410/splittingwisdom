@@ -5,7 +5,7 @@
  * All amounts are integer paise.
  */
 import {
-  computeBillBreakdown,
+  computeBillDebts,
   getPairwiseBalance,
   type BillForBalance,
   type PairwiseBalance,
@@ -149,11 +149,11 @@ export function computeBillSettlementStatuses(
 
   const dues = new Map<string, { billId: number; amount: number }[]>();
   for (const bill of ordered) {
-    for (const row of computeBillBreakdown(bill)) {
-      if (row.memberId === bill.paidByMemberId || row.total <= 0) continue;
-      const k = key(row.memberId, bill.paidByMemberId);
+    for (const debt of computeBillDebts(bill)) {
+      if (debt.amount <= 0) continue;
+      const k = key(debt.debtorId, debt.creditorId);
       if (!dues.has(k)) dues.set(k, []);
-      dues.get(k)!.push({ billId: bill.id, amount: row.total });
+      dues.get(k)!.push({ billId: bill.id, amount: debt.amount });
     }
   }
 

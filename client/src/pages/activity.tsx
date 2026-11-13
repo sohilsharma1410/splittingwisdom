@@ -10,6 +10,9 @@ import { BreakdownDialog } from "@/components/bills/breakdown-dialog";
 import { useActivity, type ActivityBillItem } from "@/hooks/use-bills";
 import { formatPaise } from "@splittingwisdom/shared";
 import { parseDateOnly } from "@/lib/date";
+import { paidByLabel } from "@/lib/payers";
+import { inDateRange, NO_RANGE, type DateRange } from "@/lib/bill-list";
+import { DateRangeFilter } from "@/components/bills/date-range-filter";
 
 type Filter = "all" | "pending" | "settled";
 
@@ -34,7 +37,7 @@ function ActivityCard({ bill }: { bill: ActivityBillItem }) {
             {bill.hasReceipt && <Camera className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Has a receipt photo" />}
           </p>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {bill.groupName} · {format(parseDateOnly(bill.billDate), "d MMM yyyy")} · Paid by {bill.paidByName}
+            {bill.groupName} · {format(parseDateOnly(bill.billDate), "d MMM yyyy")} · Paid by {paidByLabel(bill.paidByName, bill.payerCount)}
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
@@ -73,7 +76,7 @@ function ActivityCard({ bill }: { bill: ActivityBillItem }) {
         open={breakdownOpen}
         onOpenChange={setBreakdownOpen}
         title={bill.description}
-        description={`${bill.groupName} · ${format(parseDateOnly(bill.billDate), "d MMM yyyy")} · Paid by ${bill.paidByName}`}
+        description={`${bill.groupName} · ${format(parseDateOnly(bill.billDate), "d MMM yyyy")} · Paid by ${paidByLabel(bill.paidByName, bill.payerCount)}`}
       >
         {bill.unassignedItemCount > 0 && (
           <p className="flex items-center gap-1.5 text-xs text-coral-ink">
@@ -111,6 +114,7 @@ function ActivityCard({ bill }: { bill: ActivityBillItem }) {
 export default function Activity() {
   const { data, isLoading, isError, refetch } = useActivity();
   const [filter, setFilter] = useState<Filter>("all");
+  const [range, setRange] = useState<DateRange>(NO_RANGE);
 
   if (isLoading) {
     return (
@@ -128,7 +132,7 @@ export default function Activity() {
 
   const pendingCount = data.bills.filter((b) => b.status === "pending").length;
   const settledCount = data.bills.filter((b) => b.status === "settled").length;
-  const filtered = data.bills.filter((b) => filter === "all" || b.status === filter);
+  const filtered = data.bills.filter((b) => (filter === "all" || b.status === filter) && inDateRange(b.billDate, range));
 
   const groups = new Map<string, ActivityBillItem[]>();
   for (const bill of filtered) {
@@ -144,7 +148,7 @@ export default function Activity() {
         <p className="mt-1 text-muted-foreground">Every bill across your groups, newest first.</p>
       </header>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {(
           [
             ["all", `All (${data.bills.length})`],
@@ -163,6 +167,8 @@ export default function Activity() {
         ))}
       </div>
 
+      <DateRangeFilter value={range} onChange={setRange} />
+
       {filtered.length === 0 ? (
         <EmptyState
           icon={ActivityIcon}
@@ -170,7 +176,7 @@ export default function Activity() {
           description={
             data.bills.length === 0
               ? "Bills you add will show up here, grouped by date."
-              : "Try a different filter."
+              : "Try a different filter or other dates."
           }
         />
       ) : (

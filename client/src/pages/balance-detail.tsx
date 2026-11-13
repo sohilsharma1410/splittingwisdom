@@ -129,6 +129,18 @@ export default function BalanceDetail() {
   );
 }
 
+/** "You paid ₹1,000.00", or with several payers "You, Sohil and Dev paid ₹3,000.00". */
+function paidLine(bill: ContributingBill): string {
+  const who = bill.payerNames
+    ? bill.payerNames.length > 1
+      ? `${bill.payerNames.slice(0, -1).join(", ")} and ${bill.payerNames[bill.payerNames.length - 1]}`
+      : bill.payerNames[0]
+    : bill.payerIsMe
+      ? "You"
+      : bill.payerName;
+  return `${who} paid ${formatPaise(bill.grandTotal)}`;
+}
+
 function ContributingBillCard({ bill }: { bill: ContributingBill }) {
   const [detailOpen, setDetailOpen] = useState(false);
 
@@ -142,13 +154,11 @@ function ContributingBillCard({ bill }: { bill: ContributingBill }) {
         <div className="min-w-0">
           <p className="font-medium">{bill.description}</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            {bill.groupName} · {bill.payerIsMe ? "You" : bill.payerName} paid {formatPaise(bill.grandTotal)}
+            {bill.groupName} · {paidLine(bill)}
             {" · "}
             {bill.payerIsMe ? `their share ${formatPaise(bill.theirShare)}` : `your share ${formatPaise(bill.theirShare)}`}
             {" → "}
-            {bill.payerIsMe
-              ? `they owe ${formatPaise(bill.theirShare)}`
-              : `you owe ${formatPaise(bill.theirShare)}`}
+            {bill.payerIsMe ? `they owe ${formatPaise(bill.owed)}` : `you owe ${formatPaise(bill.owed)}`}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -161,7 +171,7 @@ function ContributingBillCard({ bill }: { bill: ContributingBill }) {
         open={detailOpen}
         onOpenChange={setDetailOpen}
         title={bill.description}
-        description={`${bill.groupName} · ${bill.payerIsMe ? "You" : bill.payerName} paid ${formatPaise(bill.grandTotal)}`}
+        description={`${bill.groupName} · ${paidLine(bill)}`}
       >
         {bill.items.length === 0 ? (
           <p className="text-xs text-muted-foreground">No items driving this contribution.</p>

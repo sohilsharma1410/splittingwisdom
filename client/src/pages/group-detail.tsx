@@ -7,7 +7,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MoneySummary } from "@/components/balances/money-summary";
-import { filterAndSortBills, type BillSort } from "@/lib/bill-list";
+import { filterAndSortBills, groupByDay, NO_RANGE, type BillSort, type DateRange } from "@/lib/bill-list";
+import { DateRangeFilter } from "@/components/bills/date-range-filter";
+import { format } from "date-fns";
+import { parseDateOnly } from "@/lib/date";
 import { BackButton } from "@/components/ui/back-button";
 import {
   DropdownMenu,
@@ -60,6 +63,7 @@ export default function GroupDetail() {
   const [removeTarget, setRemoveTarget] = useState<GroupMemberDetail | null>(null);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<BillSort>(readSavedSort);
+  const [range, setRange] = useState<DateRange>(NO_RANGE);
 
   function changeSort(next: BillSort) {
     setSort(next);
@@ -228,26 +232,47 @@ export default function GroupDetail() {
               </div>
             </div>
 
+            <DateRangeFilter value={range} onChange={setRange} />
+
             {(() => {
-              const shown = filterAndSortBills(billsData.bills, search, sort);
+              const shown = filterAndSortBills(billsData.bills, search, sort, range);
               if (shown.length === 0) {
+                const searching = search.trim() !== "";
                 return (
                   <EmptyState
                     icon={Search}
                     heading="No bills match"
-                    description={`Nothing in this group's bill names or merchants matches "${search.trim()}".`}
+                    description={
+                      searching
+                        ? `No bills between those dates have a name or merchant matching "${search.trim()}".`
+                        : "No bills are dated between those dates."
+                    }
                     action={
-                      <Button variant="outline" onClick={() => setSearch("")}>
-                        Clear search
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setSearch("");
+                          setRange(NO_RANGE);
+                        }}
+                      >
+                        Clear search and dates
                       </Button>
                     }
                   />
                 );
               }
               return (
-                <div className="space-y-2">
-                  {shown.map((bill) => (
-                    <BillCard key={bill.id} bill={bill} />
+                <div className="space-y-5">
+                  {groupByDay(shown, sort).map(({ day, bills }) => (
+                    <section key={day} aria-label={format(parseDateOnly(day), "d MMMM yyyy")} className="space-y-2">
+                      <h3 className="text-sm font-semibold text-muted-foreground">
+                        {sort === "added" ? "Added " : ""}
+                        {format(parseDateOnly(day), "d MMMM yyyy")}
+                      </h3>
+                      {bills.map((bill) => (
+                        <BillCard key={bill.id} bill={bill} />
+                      ))}
+                    </section>
                   ))}
                 </div>
               );

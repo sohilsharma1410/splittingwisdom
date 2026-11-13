@@ -22,6 +22,7 @@ const bill = (over: Partial<LoadedGroup["bills"][number]>): LoadedGroup["bills"]
   serviceFeeAmount: 0,
   discountAmount: 1000,
   paidByMemberId: 41,
+  payers: null,
   receiptImageUrl: null,
   createdAt: new Date("2026-11-10T20:00:00Z"),
   items: [],
@@ -140,7 +141,7 @@ describe("checking a file before import", () => {
 
   it("rejects something that isn't an export, or comes from a newer version", () => {
     expect(problem({ hello: "world" })).toMatch(/isn't a SplittingWisdom group export/);
-    expect(problem(edited((f) => ((f as { version: number }).version = 2)))).toMatch(/newer version/);
+    expect(problem(edited((f) => ((f as { version: number }).version = 3)))).toMatch(/newer version/);
   });
 
   it("applies the app's own split rules: percentages must make 100", () => {
@@ -153,5 +154,53 @@ describe("checking a file before import", () => {
     expect(problem(edited((f) => (f.groups[0].bills[0].taxAmount = 10.5)))).toMatch(/whole paise/);
     expect(problem(edited((f) => (f.groups[0].bills[0].receipt!.base64 = "<script>")))).toMatch(/damaged/);
     expect(problem(edited((f) => f.groups[0].nets.pop()))).toMatch(/every member exactly once/);
+  });
+});
+
+describe("exporting a bill several people paid", () => {
+  // Jacob (41) and Ravi (60) each paid for their own ticket; Sohil (57) paid nothing.
+  const flights: LoadedGroup = {
+    ...group,
+    settlements: [],
+    bills: [
+      bill({
+        id: 9,
+        description: "Flights",
+        subtotalAmount: 30000,
+        taxAmount: 0,
+        discountAmount: 0,
+        paidByMemberId: 60,
+        payers: [{ memberId: 41, amount: 10000 }, { memberId: 60, amount: 20000 }],
+        items: [
+          { id: 5, name: "Jacob", price: 10000, quantity: 1, sortOrder: 0, assignments: [equal(41)] },
+          { id: 6, name: "Ravi", price: 20000, quantity: 1, sortOrder: 1, assignments: [equal(60)] },
+        ],
+      }),
+    ],
+  };
+  const exported = buildExportedGroup(flights, 41, new Map());
+
+  it("writes the payers by ref, and nobody owes anybody", () => {
+    expect(exported.bills[0].payers).toEqual([{ member: 1, amount: 10000 }, { member: 3, amount: 20000 }]);
+    expect(exported.bills[0].paidBy).toBe(3);
+    expect(exported.nets.map((n) => n.net)).toEqual([0, 0, 0]);
+    expect(groupsWithMismatchedNets(roundTrip(fileOf(exported)))).toEqual([]);
+  });
+
+  it("rejects a file whose payers don't add up to the bill", () => {
+    const file = JSON.parse(JSON.stringify(fileOf(exported))) as GroupExportFile;
+    file.groups[0].bills[0].payers![0].amount = 9999;
+    const result = groupExportFileSchema.safeParse(file);
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.issues[0].message).toMatch(/short of the bill/);
+  });
+
+  it("still reads a version 1 file, where bills have no payers field", () => {
+    const v1 = JSON.parse(JSON.stringify(fileOf(buildExportedGroup(group, 41, new Map()))));
+    v1.version = 1;
+    for (const b of v1.groups[0].bills) delete b.payers;
+    const parsed = groupExportFileSchema.parse(v1);
+    expect(parsed.groups[0].bills.every((b) => b.payers === null)).toBe(true);
+    expect(groupsWithMismatchedNets(parsed)).toEqual([]);
   });
 });

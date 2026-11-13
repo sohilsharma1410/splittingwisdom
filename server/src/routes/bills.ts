@@ -12,6 +12,9 @@ import {
   groupMembers,
   users,
   billGrandTotal,
+  mainPayer,
+  payersProblem,
+  type BillPayer,
   computeBillBreakdown,
   computeItemShares,
   type BillItemForBalance,
@@ -181,8 +184,25 @@ function buildItemsResponse(items: DbBillItem[]) {
   });
 }
 
+/** Everyone who paid a bill with their amounts, or null when one person paid it all. */
+function buildPayersResponse(payers: BillPayer[] | null, names: Map<number, string>) {
+  if (!payers || payers.length === 0) return null;
+  return payers.map((p) => ({ memberId: p.memberId, displayName: names.get(p.memberId) ?? "Someone", amount: p.amount }));
+}
+
+/**
+ * Checks a list of payers against the bill's group and grand total. Returns an error message,
+ * or null when it's fine.
+ */
+function payersError(payers: BillPayer[] | null, validMemberIds: Set<number>, grandTotal: number): string | null {
+  if (!payers) return null;
+  if (payers.some((p) => !validMemberIds.has(p.memberId))) return "Everyone who paid must belong to this group.";
+  return payersProblem(payers, grandTotal);
+}
+
 function buildBreakdownResponse(items: DbBillItem[], bill: {
   paidByMemberId: number;
+  payers: BillPayer[] | null;
   taxAmount: number;
   tipAmount: number;
   serviceFeeAmount: number;
@@ -239,6 +259,7 @@ router.get("/", async (req, res) => {
       itemCount: bill.items.length,
       unassignedItemCount: bill.items.length - assignedItemCount,
       paidByName: bill.paidBy.displayName,
+      payerCount: bill.payers?.length ?? 1,
       status: statuses.get(bill.id) ?? "pending",
       hasReceipt: bill.receiptImageUrl !== null,
       myShare,
@@ -308,7 +329,24 @@ router.post("/", idempotency(), async (req, res) => {
 
   const validMemberIds = await loadGroupMemberIds(groupId);
 
-  let paidByMemberId = input.paidByMemberId ? remapMemberId(input.paidByMemberId) : undefined;
+  const payers = input.payers ? input.payers.map((p) => ({ memberId: remapMemberId(p.memberId), amount: p.amount })) : null;
+  const payerProblem = payersError(
+    payers,
+    validMemberIds,
+    billGrandTotal({
+      subtotalAmount: input.subtotalAmount,
+      taxAmount: input.taxAmount ?? 0,
+      tipAmount: input.tipAmount ?? 0,
+      serviceFeeAmount: input.serviceFeeAmount ?? 0,
+      discountAmount: input.discountAmount ?? 0,
+    }),
+  );
+  if (payerProblem) {
+    res.status(400).json({ error: { message: payerProblem } });
+    return;
+  }
+
+  let paidByMemberId = payers ? mainPayer(payers) : input.paidByMemberId ? remapMemberId(input.paidByMemberId) : undefined;
   if (!paidByMemberId) {
     if (input.groupId) {
       res.status(400).json({ error: { message: "Choose who paid." } });
@@ -353,6 +391,7 @@ router.post("/", idempotency(), async (req, res) => {
         serviceFeeAmount: input.serviceFeeAmount ?? 0,
         discountAmount: input.discountAmount ?? 0,
         paidByMemberId,
+        payers,
         createdByUserId: req.session.userId!,
       })
       .returning();
@@ -460,7 +499,10 @@ router.get("/:id", async (req, res) => {
       : Promise.resolve(null),
   ]);
 
-  const statuses = await loadBillStatuses([bill.groupId]);
+  const [statuses, members] = await Promise.all([
+    loadBillStatuses([bill.groupId]),
+    db.query.groupMembers.findMany({ where: eq(groupMembers.groupId, bill.groupId), columns: { id: true, displayName: true } }),
+  ]);
   const items = buildItemsResponse(bill.items);
   const breakdown = buildBreakdownResponse(bill.items, bill);
   const itemsSubtotal = bill.items.reduce((sum, item) => sum + item.price, 0);
@@ -486,6 +528,7 @@ router.get("/:id", async (req, res) => {
         grandTotal: billGrandTotal(bill),
         paidByMemberId: bill.paidByMemberId,
         paidByName: bill.paidBy.displayName,
+        payers: buildPayersResponse(bill.payers, new Map(members.map((m) => [m.id, m.displayName]))),
         status: statuses.get(bill.id) ?? "pending",
         createdByName: createdBy?.displayName ?? "Someone",
         lastEditedByName: lastEditedBy?.displayName ?? null,
@@ -596,6 +639,24 @@ router.patch("/:id", async (req, res) => {
   const input = parsed.data;
 
   const validMemberIds = await loadGroupMemberIds(existing.groupId);
+
+  // The payers that will apply after this edit, checked against the total after this edit: a
+  // price change alone can make an existing list stop adding up.
+  const payers = input.payers !== undefined ? input.payers ?? null : existing.payers;
+  const totalAfter = billGrandTotal({
+    subtotalAmount: input.subtotalAmount ?? existing.subtotalAmount,
+    taxAmount: input.taxAmount ?? existing.taxAmount,
+    tipAmount: input.tipAmount ?? existing.tipAmount,
+    serviceFeeAmount: input.serviceFeeAmount ?? existing.serviceFeeAmount,
+    discountAmount: input.discountAmount ?? existing.discountAmount,
+  });
+  const payerProblem = payersError(payers, validMemberIds, totalAfter);
+  if (payerProblem) {
+    res.status(400).json({ error: { message: input.payers === undefined ? `${payerProblem} Update who paid.` : payerProblem } });
+    return;
+  }
+  const paidByMemberId = payers ? mainPayer(payers) : input.paidByMemberId;
+
   if (input.paidByMemberId && !validMemberIds.has(input.paidByMemberId)) {
     res.status(400).json({ error: { message: "Payer must belong to this group." } });
     return;
@@ -620,7 +681,8 @@ router.patch("/:id", async (req, res) => {
         ...(input.tipAmount !== undefined && { tipAmount: input.tipAmount }),
         ...(input.serviceFeeAmount !== undefined && { serviceFeeAmount: input.serviceFeeAmount }),
         ...(input.discountAmount !== undefined && { discountAmount: input.discountAmount }),
-        ...(input.paidByMemberId !== undefined && { paidByMemberId: input.paidByMemberId }),
+        ...(paidByMemberId !== undefined && { paidByMemberId }),
+        ...(input.payers !== undefined && { payers: input.payers ?? null }),
         lastEditedByUserId: req.session.userId!,
         lastEditedAt: new Date(),
         updatedAt: new Date(),

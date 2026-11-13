@@ -43,6 +43,8 @@ import {
   splitEqually,
   allocateProportionally,
   computeBillBreakdown,
+  mainPayer,
+  payersProblem,
 } from "@splittingwisdom/shared";
 
 function safeRupeesToPaise(input: string): number {
@@ -125,6 +127,9 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
   const [serviceFeeAmount, setServiceFeeAmount] = useState("");
   const [discountAmount, setDiscountAmount] = useState("");
   const [payerMemberId, setPayerMemberId] = useState<number | null>(null);
+  // Several people paid: what each paid, as typed (rupees), by member id.
+  const [severalPayers, setSeveralPayers] = useState(false);
+  const [payerAmounts, setPayerAmounts] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
 
   // Quick Split mode — one field, equal split among selected members.
@@ -178,6 +183,8 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
     setServiceFeeAmount("");
     setDiscountAmount("");
     setPayerMemberId(null);
+    setSeveralPayers(false);
+    setPayerAmounts({});
     setError(null);
     setQuickSplit(true);
     setTotalAmount("");
@@ -226,6 +233,10 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
         editBill.discountAmount > 0,
     );
     setPayerMemberId(editBill.paidByMemberId);
+    setSeveralPayers(editBill.payers !== null);
+    setPayerAmounts(
+      Object.fromEntries((editBill.payers ?? []).map((p) => [p.memberId, paiseToRupeeInput(p.amount)])),
+    );
 
     if (isQuickSplitShaped(editBill)) {
       setQuickSplit(true);
@@ -324,6 +335,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
 
     const breakdown = computeBillBreakdown({
       paidByMemberId: payerMemberId,
+      payers: null, // the preview shows shares, which don't depend on who paid
       taxAmount: safeRupeesToPaise(taxAmount),
       tipAmount: safeRupeesToPaise(tipAmount),
       serviceFeeAmount: safeRupeesToPaise(serviceFeeAmount),
@@ -350,6 +362,24 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quickSplit, items, existingItemData, effectiveMemberIds, payerMemberId, taxAmount, tipAmount, serviceFeeAmount, discountAmount, effectiveMembers]);
 
+  // The bill's grand total as it will be saved: what several payers' amounts must add up to.
+  const formGrandTotal = (() => {
+    const charges = safeRupeesToPaise(taxAmount) + safeRupeesToPaise(tipAmount) + safeRupeesToPaise(serviceFeeAmount) - safeRupeesToPaise(discountAmount);
+    if (quickSplit) return safeRupeesToPaise(totalAmount) + charges;
+    const validRows = items.filter((item) => item.name.trim() && safeRupeesToPaise(item.price) > 0);
+    return (showReceiptTotal && receiptTotal.trim() ? safeRupeesToPaise(receiptTotal) : itemsSubtotal(validRows)) + charges;
+  })();
+  const enteredPayers = effectiveMembers
+    .map((m) => ({ memberId: m.id, amount: safeRupeesToPaise(payerAmounts[m.id] ?? "") }))
+    .filter((p) => p.amount > 0);
+  const enteredTotal = enteredPayers.reduce((sum, p) => sum + p.amount, 0);
+
+  /** Each person paid exactly their share: fill the amounts from the live preview. */
+  function fillOwnShares() {
+    const rows = quickSplit ? quickPreview.rows : (itemizedPreview?.rows ?? []);
+    setPayerAmounts(Object.fromEntries(rows.filter((r) => r.total > 0).map((r) => [r.id, paiseToRupeeInput(r.total)])));
+  }
+
   function toggleSplitMember(id: number) {
     setSplitMemberIds((current) => {
       const list = current ?? [];
@@ -365,6 +395,11 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
     if (id === user?.id) return; // you're always on your own bill
     setParticipants((current) => current.filter((p) => p.id !== id));
     if (payerMemberId === id && user) setPayerMemberId(user.id);
+    setPayerAmounts((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -379,7 +414,7 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
       setError("Description is required.");
       return;
     }
-    if (!payerMemberId) {
+    if (!severalPayers && !payerMemberId) {
       setError("Choose who paid.");
       return;
     }
@@ -421,6 +456,21 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
       }));
     }
 
+    let payers: { memberId: number; amount: number }[] | null = null;
+    if (severalPayers) {
+      if (enteredPayers.length < 2) {
+        setError("Enter what at least two people paid, or choose one person in Paid by.");
+        return;
+      }
+      const grandTotal = subtotalAmount + safeRupeesToPaise(taxAmount) + safeRupeesToPaise(tipAmount) + safeRupeesToPaise(serviceFeeAmount) - safeRupeesToPaise(discountAmount);
+      const problem = payersProblem(enteredPayers, grandTotal);
+      if (problem) {
+        setError(problem);
+        return;
+      }
+      payers = enteredPayers;
+    }
+
     const payload = {
       groupId: isIndividualSelected ? undefined : (effectiveGroupId ?? undefined),
       participantUserIds: isIndividualSelected ? participants.map((p) => p.id) : undefined,
@@ -432,7 +482,8 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
       tipAmount: safeRupeesToPaise(tipAmount),
       serviceFeeAmount: safeRupeesToPaise(serviceFeeAmount),
       discountAmount: safeRupeesToPaise(discountAmount),
-      paidByMemberId: payerMemberId ?? undefined,
+      paidByMemberId: payers ? mainPayer(payers) : (payerMemberId ?? undefined),
+      payers,
       items: billItems,
     };
 
@@ -612,14 +663,21 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
             <div className="space-y-1.5">
               <Label htmlFor="bill-payer">Paid by</Label>
               <Select
-                value={payerMemberId ? String(payerMemberId) : undefined}
+                value={severalPayers ? "several" : payerMemberId ? String(payerMemberId) : undefined}
                 onValueChange={(v) => {
+                  if (v === "several") {
+                    setSeveralPayers(true);
+                    return;
+                  }
                   // Radix can fire this with "" when the controlled value
                   // briefly doesn't match any item (e.g. the render right
                   // before individual-mode participants populate) —
                   // Number("") is 0, which would silently corrupt the payer.
                   const id = Number(v);
-                  if (Number.isInteger(id) && id > 0) setPayerMemberId(id);
+                  if (Number.isInteger(id) && id > 0) {
+                    setPayerMemberId(id);
+                    setSeveralPayers(false);
+                  }
                 }}
               >
                 <SelectTrigger id="bill-payer">
@@ -631,8 +689,52 @@ export function BillFormDialog({ open, onOpenChange, lockedGroupId, editBill }: 
                       {m.displayName}
                     </SelectItem>
                   ))}
+                  {effectiveMembers.length > 1 && <SelectItem value="several">Several people</SelectItem>}
                 </SelectContent>
               </Select>
+
+              {severalPayers && (
+                <fieldset className="space-y-2 rounded-lg border border-border p-3">
+                  <legend className="px-1 text-sm font-medium">How much each person paid</legend>
+                  <div className="space-y-2">
+                    {effectiveMembers.map((m) => (
+                      <div key={m.id} className="flex items-center justify-between gap-3">
+                        <Label htmlFor={`payer-amount-${m.id}`} className="min-w-0 truncate font-normal">
+                          {m.displayName}
+                        </Label>
+                        <div className="w-36 shrink-0">
+                          <CurrencyInput
+                            id={`payer-amount-${m.id}`}
+                            placeholder="0.00"
+                            value={payerAmounts[m.id] ?? ""}
+                            onChange={(e) => setPayerAmounts((current) => ({ ...current, [m.id]: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <p
+                      className={cn(
+                        "text-xs",
+                        enteredTotal === formGrandTotal && formGrandTotal > 0 ? "text-success-ink" : "text-muted-foreground",
+                      )}
+                      aria-live="polite"
+                    >
+                      <span className="tabular-currency">{formatPaise(enteredTotal)}</span> of{" "}
+                      <span className="tabular-currency">{formatPaise(formGrandTotal)}</span>
+                      {enteredTotal === formGrandTotal && formGrandTotal > 0
+                        ? " ✓ adds up"
+                        : enteredTotal < formGrandTotal
+                          ? `, ${formatPaise(formGrandTotal - enteredTotal)} still to enter`
+                          : `, ${formatPaise(enteredTotal - formGrandTotal)} too much`}
+                    </p>
+                    <Button type="button" size="sm" variant="outline" onClick={fillOwnShares}>
+                      Each paid their own share
+                    </Button>
+                  </div>
+                </fieldset>
+              )}
             </div>
           )}
 

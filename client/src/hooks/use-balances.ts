@@ -35,10 +35,16 @@ export interface ContributingBill {
   description: string;
   groupName: string;
   billDate: string;
+  /** True when, on this bill, they owe you; false when you owe them. */
   payerIsMe: boolean;
   payerName: string;
+  /** Everyone who paid ("You" for you) when several did; null when one person paid. */
+  payerNames: string[] | null;
   grandTotal: number;
+  /** The share of whoever owes on this bill. */
   theirShare: number;
+  /** What this bill makes one of you owe the other. With one payer it equals theirShare. */
+  owed: number;
   items: ContributingBillItem[];
 }
 

@@ -1,4 +1,4 @@
-import { billGrandTotal, summarizeMember, type BillForSummary, type ExportedGroup, type SplitType } from "@splittingwisdom/shared";
+import { billGrandTotal, summarizeMember, type BillForSummary, type BillPayer, type ExportedGroup, type SplitType } from "@splittingwisdom/shared";
 
 // Building the export form of a group. No database access, so it is unit tested directly.
 
@@ -18,6 +18,7 @@ export interface LoadedGroup {
     serviceFeeAmount: number;
     discountAmount: number;
     paidByMemberId: number;
+    payers: BillPayer[] | null;
     receiptImageUrl: string | null;
     createdAt: Date;
     items: {
@@ -64,6 +65,7 @@ export function buildExportedGroup(group: LoadedGroup, exporterMemberId: number,
   const billsInOrder = [...group.bills].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id - b.id);
   const dbBills: BillForSummary[] = billsInOrder.map((bill) => ({
     paidByMemberId: bill.paidByMemberId,
+    payers: bill.payers,
     taxAmount: bill.taxAmount,
     tipAmount: bill.tipAmount,
     serviceFeeAmount: bill.serviceFeeAmount,
@@ -90,6 +92,7 @@ export function buildExportedGroup(group: LoadedGroup, exporterMemberId: number,
         serviceFeeAmount: bill.serviceFeeAmount,
         discountAmount: bill.discountAmount,
         paidBy: toRef(bill.paidByMemberId),
+        payers: bill.payers ? bill.payers.map((p) => ({ member: toRef(p.memberId), amount: p.amount })) : null,
         createdAt: bill.createdAt.toISOString(),
         items: [...bill.items]
           .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)

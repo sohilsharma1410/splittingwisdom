@@ -28,6 +28,7 @@ const file: GroupExportFile = {
           serviceFeeAmount: 0,
           discountAmount: 100,
           paidBy: 1,
+          payers: null,
           createdAt: "2026-11-10T12:00:00.000Z",
           items: [
             { name: "Thali", price: 9001, quantity: 1, assignments: [equal(1), equal(2), equal(3)] },
@@ -42,10 +43,43 @@ const file: GroupExportFile = {
   ],
 };
 
+describe("the spreadsheet export with several payers", () => {
+  // Flights: each bought their own ticket, and Dev (ref 4) paid for Sohil's too but flew nowhere.
+  const flights: GroupExportFile = JSON.parse(JSON.stringify(file));
+  flights.groups[0].members.push({ ref: 4, displayName: "Dev", registered: true });
+  flights.groups[0].bills = [
+    {
+      ...file.groups[0].bills[0],
+      description: "Flights",
+      subtotalAmount: 30000,
+      taxAmount: 0,
+      discountAmount: 0,
+      paidBy: 4,
+      payers: [{ member: 1, amount: 10000 }, { member: 4, amount: 20000 }],
+      items: [
+        { name: "Jacob's ticket", price: 10000, quantity: 1, assignments: [equal(1)] },
+        { name: "Sohil's ticket", price: 20000, quantity: 1, assignments: [equal(2)] },
+      ],
+    },
+  ];
+  flights.groups[0].settlements = [];
+  const rows = groupExportToRows(flights);
+
+  it("gives every payer a row with what they paid, even with nothing on the bill", () => {
+    expect(rows.map((r) => [r.Person, r.Amount, r.Paid])).toEqual([
+      ["Jacob", "100.00", "100.00"],
+      ["Sohil", "200.00", "0.00"],
+      ["Dev", "0.00", "200.00"],
+    ]);
+    expect(rows[0]["Paid by"]).toBe("Jacob, Dev");
+  });
+});
+
 describe("the spreadsheet export", () => {
   const rows = groupExportToRows(file);
 
   it("has a row per person per bill, one for what nobody had, and one per settlement", () => {
+    expect(rows.filter((r) => r.Type === "Share").map((r) => r.Paid)).toEqual(["104.01", "0.00", "0.00"]);
     expect(rows.map((r) => [r.Type, r.Person])).toEqual([
       ["Share", "Jacob"],
       ["Share", "Sohil"],

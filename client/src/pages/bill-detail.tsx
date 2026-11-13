@@ -12,6 +12,7 @@ import { BillFormDialog } from "@/components/bills/bill-form-dialog";
 import { DeleteBillAlert } from "@/components/bills/delete-bill-alert";
 import { AssignmentEditor } from "@/components/bills/assignment-editor";
 import { BreakdownDialog } from "@/components/bills/breakdown-dialog";
+import { paidByLabel } from "@/lib/payers";
 import { ReceiptSection } from "@/components/bills/receipt-section";
 import { useBill, useUpdateBill, type BillItemDetail, type BillItemInput, type ItemAssignmentInput } from "@/hooks/use-bills";
 import { useGroup } from "@/hooks/use-groups";
@@ -123,7 +124,7 @@ export default function BillDetail() {
             <h1 className="mt-1 text-3xl font-semibold">{bill.description}</h1>
             <p className="mt-1 text-muted-foreground">
               {format(billDateLocal, "d MMM yyyy")}
-              {bill.merchant && ` · ${bill.merchant}`} · Paid by {bill.paidByName}
+              {bill.merchant && ` · ${bill.merchant}`} · Paid by {paidByLabel(bill.paidByName, bill.payers?.length ?? 1)}
             </p>
           </div>
         </div>
@@ -145,6 +146,23 @@ export default function BillDetail() {
           </span>
           <span className="tabular-currency text-2xl font-semibold">{formatPaise(bill.grandTotal)}</span>
         </div>
+        {bill.payers && (
+          <div className="mt-3 space-y-1.5 border-t border-border pt-3">
+            <p className="text-sm font-medium">Paid by</p>
+            <ul className="space-y-1">
+              {bill.payers.map((p) => (
+                <li key={p.memberId} className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">{p.displayName}</span>
+                  <span className="tabular-currency">{formatPaise(p.amount)}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground">
+              Whoever paid more than their share gets the difference back from whoever paid less, in proportion to
+              how much each is owed. Someone who paid exactly their share owes and is owed nothing.
+            </p>
+          </div>
+        )}
         {bill.lastEditedAt && bill.lastEditedByName && (
           <p className="mt-2 text-xs text-muted-foreground">
             Edited by {bill.lastEditedByName} at {format(new Date(bill.lastEditedAt), "d MMM yyyy, h:mm a")}

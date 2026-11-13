@@ -8,6 +8,7 @@ import {
   summarizeMember,
   billGrandTotal,
   type BillForBalance,
+  type BillPayer,
   type BillForSummary,
   type MemberSummary,
   type SettlementForBalance,
@@ -17,6 +18,7 @@ import {
 /** A loaded bill (with items and assignments) in the shape the balance engine takes. */
 export function toBillForBalance(b: {
   paidByMemberId: number;
+  payers: BillPayer[] | null;
   taxAmount: number;
   tipAmount: number;
   serviceFeeAmount: number;
@@ -34,6 +36,7 @@ export function toBillForBalance(b: {
 }): BillForBalance {
   return {
     paidByMemberId: b.paidByMemberId,
+    payers: b.payers,
     taxAmount: b.taxAmount,
     tipAmount: b.tipAmount,
     serviceFeeAmount: b.serviceFeeAmount,

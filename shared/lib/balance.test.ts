@@ -24,7 +24,7 @@ describe("computeBalances", () => {
 
   it("a single equal-split bill: non-payers owe the payer their share", () => {
     const bill: BillForBalance = {
-      paidByMemberId: 1,
+      paidByMemberId: 1, payers: null,
       taxAmount: 0,
       tipAmount: 0,
       serviceFeeAmount: 0,
@@ -44,7 +44,7 @@ describe("computeBalances", () => {
 
   it("the payer never owes themselves, even when included in the split", () => {
     const bill: BillForBalance = {
-      paidByMemberId: 1,
+      paidByMemberId: 1, payers: null,
       taxAmount: 0,
       tipAmount: 0,
       serviceFeeAmount: 0,
@@ -58,7 +58,7 @@ describe("computeBalances", () => {
 
   it("allocates tax proportionally to each member's item share", () => {
     const bill: BillForBalance = {
-      paidByMemberId: 1,
+      paidByMemberId: 1, payers: null,
       taxAmount: rupeesToPaise("18"),
       tipAmount: 0,
       serviceFeeAmount: 0,
@@ -80,7 +80,7 @@ describe("computeBalances", () => {
 
   it("a member with zero items on the bill owes zero tax/tip on it", () => {
     const bill: BillForBalance = {
-      paidByMemberId: 1,
+      paidByMemberId: 1, payers: null,
       taxAmount: rupeesToPaise("50"),
       tipAmount: rupeesToPaise("20"),
       serviceFeeAmount: 0,
@@ -94,7 +94,7 @@ describe("computeBalances", () => {
 
   it("discount reduces the owed amount, allocated the same way as tax", () => {
     const bill: BillForBalance = {
-      paidByMemberId: 1,
+      paidByMemberId: 1, payers: null,
       taxAmount: 0,
       tipAmount: 0,
       serviceFeeAmount: 0,
@@ -108,7 +108,7 @@ describe("computeBalances", () => {
 
   it("accumulates across multiple bills between the same two people", () => {
     const bill1: BillForBalance = {
-      paidByMemberId: 1,
+      paidByMemberId: 1, payers: null,
       taxAmount: 0,
       tipAmount: 0,
       serviceFeeAmount: 0,
@@ -116,7 +116,7 @@ describe("computeBalances", () => {
       items: [{ price: rupeesToPaise("200"), assignments: equalAssignments([1, 2]) }], // Bob owes Alice 100
     };
     const bill2: BillForBalance = {
-      paidByMemberId: 2,
+      paidByMemberId: 2, payers: null,
       taxAmount: 0,
       tipAmount: 0,
       serviceFeeAmount: 0,
@@ -130,7 +130,7 @@ describe("computeBalances", () => {
 
   it("a full settlement zeroes out the balance", () => {
     const bill: BillForBalance = {
-      paidByMemberId: 1,
+      paidByMemberId: 1, payers: null,
       taxAmount: 0,
       tipAmount: 0,
       serviceFeeAmount: 0,
@@ -146,7 +146,7 @@ describe("computeBalances", () => {
 
   it("a partial settlement reduces but doesn't zero the balance", () => {
     const bill: BillForBalance = {
-      paidByMemberId: 1,
+      paidByMemberId: 1, payers: null,
       taxAmount: 0,
       tipAmount: 0,
       serviceFeeAmount: 0,
@@ -171,7 +171,7 @@ describe("computeBalances", () => {
 
   it("invariant: sum of every member's total on a bill equals the bill's grand total", () => {
     const bill: BillForBalance = {
-      paidByMemberId: 1,
+      paidByMemberId: 1, payers: null,
       taxAmount: rupeesToPaise("180"),
       tipAmount: rupeesToPaise("50"),
       serviceFeeAmount: rupeesToPaise("20"),
@@ -266,7 +266,7 @@ describe("computeBalances — multi-item bills with mixed split types", () => {
     // 3 ways. Wine (₹500) split 60/40 between Alice and Bob. Dessert (₹300)
     // as custom amounts. Appetizer (₹200) split 2:1 between Bob and Carol.
     const bill: BillForBalance = {
-      paidByMemberId: 1,
+      paidByMemberId: 1, payers: null,
       taxAmount: rupeesToPaise("100"),
       tipAmount: rupeesToPaise("100"),
       serviceFeeAmount: 0,
@@ -314,7 +314,7 @@ describe("computeBalances — multi-item bills with mixed split types", () => {
 
   it("a bill with one unassigned item contributes only its assigned items to balances", () => {
     const bill: BillForBalance = {
-      paidByMemberId: 1,
+      paidByMemberId: 1, payers: null,
       taxAmount: rupeesToPaise("10"),
       tipAmount: 0,
       serviceFeeAmount: 0,
@@ -401,7 +401,7 @@ describe("property: sum of shares always equals the bill's grand total (fully-as
       }
 
       const bill: BillForBalance = {
-        paidByMemberId: payerId,
+        paidByMemberId: payerId, payers: null,
         taxAmount: Math.floor(rand() * 5000),
         tipAmount: Math.floor(rand() * 5000),
         serviceFeeAmount: Math.floor(rand() * 2000),
@@ -427,8 +427,8 @@ describe("property: sum of shares always equals the bill's grand total (fully-as
 describe("summarizeMember — one person's money in a group", () => {
   const charges = { taxAmount: 0, tipAmount: 0, serviceFeeAmount: 0, discountAmount: 0 };
   // Alice pays ₹1,200 for dinner split three ways; Bob pays ₹900 for the movie split three ways.
-  const dinner: BillForSummary = { ...charges, paidByMemberId: 1, grandTotal: 120000, items: [{ price: 120000, assignments: equalAssignments([1, 2, 3]) }] };
-  const movie: BillForSummary = { ...charges, paidByMemberId: 2, grandTotal: 90000, items: [{ price: 90000, assignments: equalAssignments([1, 2, 3]) }] };
+  const dinner: BillForSummary = { ...charges, paidByMemberId: 1, payers: null, grandTotal: 120000, items: [{ price: 120000, assignments: equalAssignments([1, 2, 3]) }] };
+  const movie: BillForSummary = { ...charges, paidByMemberId: 2, payers: null, grandTotal: 90000, items: [{ price: 90000, assignments: equalAssignments([1, 2, 3]) }] };
 
   it("shows Alice's share, what she paid and her net, which is paid minus share", () => {
     expect(summarizeMember([dinner, movie], [], 1)).toEqual({
@@ -446,7 +446,7 @@ describe("summarizeMember — one person's money in a group", () => {
   });
 
   it("includes tax, tip and discounts in the share, with remainders adding up to the bill", () => {
-    const taxed: BillForSummary = { paidByMemberId: 1, taxAmount: 100, tipAmount: 0, serviceFeeAmount: 0, discountAmount: 1, grandTotal: 199, items: [{ price: 100, assignments: equalAssignments([1, 2, 3]) }] };
+    const taxed: BillForSummary = { paidByMemberId: 1, payers: null, taxAmount: 100, tipAmount: 0, serviceFeeAmount: 0, discountAmount: 1, grandTotal: 199, items: [{ price: 100, assignments: equalAssignments([1, 2, 3]) }] };
     const shares = [1, 2, 3].map((id) => summarizeMember([taxed], [], id).share);
     expect(shares.reduce((a, b) => a + b, 0)).toBe(199);
   });
@@ -457,7 +457,7 @@ describe("summarizeMember — one person's money in a group", () => {
   });
 
   it("reports unassigned items separately, and they are nobody's share", () => {
-    const partly: BillForSummary = { ...charges, paidByMemberId: 1, grandTotal: 50000, items: [{ price: 30000, assignments: equalAssignments([1, 2]) }, { price: 20000, assignments: [] }] };
+    const partly: BillForSummary = { ...charges, paidByMemberId: 1, payers: null, grandTotal: 50000, items: [{ price: 30000, assignments: equalAssignments([1, 2]) }, { price: 20000, assignments: [] }] };
     expect(summarizeMember([partly], [], 1)).toMatchObject({ groupSpent: 50000, unassigned: 20000, share: 15000, paid: 50000, net: 15000 });
   });
 

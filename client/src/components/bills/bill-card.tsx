@@ -4,6 +4,7 @@ import { CheckCircle2, Clock } from "lucide-react";
 import { formatPaise } from "@splittingwisdom/shared";
 import { parseDateOnly } from "@/lib/date";
 import type { GroupBillSummary } from "@/hooks/use-bills";
+import { paidByLabel } from "@/lib/payers";
 
 export function BillCard({ bill }: { bill: GroupBillSummary }) {
   return (
@@ -14,7 +15,7 @@ export function BillCard({ bill }: { bill: GroupBillSummary }) {
       <div className="min-w-0">
         <p className="truncate font-medium">{bill.description}</p>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          {format(parseDateOnly(bill.billDate), "d MMM yyyy")} · Paid by {bill.paidByName}
+          {format(parseDateOnly(bill.billDate), "d MMM yyyy")} · Paid by {paidByLabel(bill.paidByName, bill.payerCount)}
           {bill.merchant && ` · ${bill.merchant}`}
         </p>
       </div>

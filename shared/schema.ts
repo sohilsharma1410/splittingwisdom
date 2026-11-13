@@ -7,11 +7,13 @@ import {
   timestamp,
   date,
   unique,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
-import { percentageGap, customAmountRemaining, isValidRatioPart } from "./lib/money.js";
+import { percentageGap, customAmountRemaining, isValidRatioPart, formatPaise } from "./lib/money.js";
+import type { BillPayer } from "./lib/balance.js";
 
 export const BILL_STATUSES = ["pending", "settled"] as const;
 export const SPLIT_TYPES = ["equal", "percentage", "ratio", "custom"] as const;
@@ -121,6 +123,10 @@ export const bills = pgTable("bills", {
     .notNull()
     .references(() => groupMembers.id),
   receiptImageUrl: text("receipt_image_url"),
+  // null: paidByMemberId paid it all. Otherwise everyone who paid and how much (paise), adding up to
+  // the grand total; paidByMemberId is then whoever paid most. A list on the bill rather than its
+  // own table so the Pi/standby sync carries it with the bill.
+  payers: jsonb("payers").$type<BillPayer[]>(),
   status: text("status", { enum: BILL_STATUSES }).notNull().default("pending"),
   createdByUserId: integer("created_by_user_id")
     .notNull()
@@ -445,6 +451,35 @@ function formatPaiseForMessage(paise: number): string {
   return `₹${(paise / 100).toFixed(2)}`;
 }
 
+// ---------------------------------------------------------------------------
+// Several people paying one bill. A list of two or more; one payer is just paidByMemberId.
+// ---------------------------------------------------------------------------
+export const billPayersSchema = z
+  .array(
+    z.object({
+      memberId: z.number().int().positive(),
+      amount: z.number().int("Amounts must be whole paise").positive("Each person who paid must have paid something"),
+    }),
+  )
+  .min(2, "Add at least two people who paid, or choose one payer")
+  .max(50)
+  .refine((payers) => new Set(payers.map((p) => p.memberId)).size === payers.length, "Each person can only be listed once as paying");
+
+/** Why a list of payers doesn't fit a bill's grand total, or null when it does. */
+export function payersProblem(payers: BillPayer[] | null | undefined, grandTotal: number): string | null {
+  if (!payers || payers.length === 0) return null;
+  const paid = payers.reduce((sum, p) => sum + p.amount, 0);
+  if (paid === grandTotal) return null;
+  return paid < grandTotal
+    ? `What everyone paid adds up to ${formatPaise(paid)}, ${formatPaise(grandTotal - paid)} short of the bill's ${formatPaise(grandTotal)}.`
+    : `What everyone paid adds up to ${formatPaise(paid)}, ${formatPaise(paid - grandTotal)} more than the bill's ${formatPaise(grandTotal)}.`;
+}
+
+/** Whoever paid most (lowest member id on a tie): shown as "Paid by" and stored in paidByMemberId. */
+export function mainPayer(payers: BillPayer[]): number {
+  return [...payers].sort((a, b) => b.amount - a.amount || a.memberId - b.memberId)[0].memberId;
+}
+
 export const createBillSchema = insertBillSchema.extend({
   // Exactly one of groupId or participantUserIds is expected (never both):
   // a real group, or a hidden/individual group resolved-or-created for that
@@ -454,6 +489,8 @@ export const createBillSchema = insertBillSchema.extend({
   groupId: z.number().int().positive().optional(),
   participantUserIds: z.array(z.number().int().positive()).min(1).optional(),
   paidByMemberId: z.number().int().positive().optional(),
+  /** Several payers. Omitted or null: paidByMemberId paid it all. */
+  payers: billPayersSchema.nullish(),
   items: z.array(billItemInputSchema).min(1, "Add at least one item"),
 });
 
