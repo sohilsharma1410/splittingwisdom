@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { SettleButton } from "@/components/settlements/settle-button";
 import { format } from "date-fns";
 import { Scale, TrendingUp, TrendingDown, CheckCircle2, Sparkles } from "lucide-react";
-import { MoneySummary } from "@/components/balances/money-summary";
+import { MoneySummary, SummaryCard } from "@/components/balances/money-summary";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -84,6 +84,14 @@ export default function Balances() {
     return <ErrorState message="Couldn't load your balances." onRetry={() => refetch()} />;
   }
 
+  function showPeople(next: Filter) {
+    setFilter(next);
+    const list = document.getElementById("people-balances");
+    list?.scrollIntoView({ behavior: "smooth", block: "start" });
+    list?.focus({ preventScroll: true });
+  }
+
+  const hasBalances = data.balances.some((b) => b.netAmount !== 0);
   const filtered = data.balances.filter((b) => {
     if (filter === "owed") return b.netAmount > 0;
     if (filter === "owe") return b.netAmount < 0;
@@ -97,31 +105,45 @@ export default function Balances() {
         <p className="mt-1 text-muted-foreground">Your share, what you paid, and who still owes whom.</p>
       </header>
 
-      <MoneySummary share={data.myShare} paid={data.iPaid} net={data.netBalance} />
+      <MoneySummary
+        share={data.myShare}
+        paid={data.iPaid}
+        net={data.netBalance}
+        onOpen={hasBalances ? () => showPeople("all") : undefined}
+        openLabel="Go to everyone you're settling with"
+      />
 
       <section aria-labelledby="still-to-settle" className="space-y-2">
         <h2 id="still-to-settle" className="text-sm font-semibold">
           Still to settle, person by person
         </h2>
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-xl border border-border bg-surface p-4">
-            <p className="flex items-center gap-1 text-sm text-muted-foreground">
+          <SummaryCard
+            onOpen={data.totalOwedToMe > 0 ? () => showPeople("owed") : undefined}
+            label={`Still to get back ${formatPaise(data.totalOwedToMe)}. Show who owes you`}
+            className="rounded-xl border border-border bg-surface p-4"
+          >
+            <p className="flex items-center gap-1 pr-5 text-sm text-muted-foreground">
               <TrendingUp className="h-4 w-4 text-success-ink" aria-hidden="true" />
               Still to get back
             </p>
             <p className="tabular-currency mt-1 text-xl font-semibold text-success-ink">
               {formatPaise(data.totalOwedToMe)}
             </p>
-          </div>
-          <div className="rounded-xl border border-border bg-surface p-4">
-            <p className="flex items-center gap-1 text-sm text-muted-foreground">
+          </SummaryCard>
+          <SummaryCard
+            onOpen={data.totalIOwe > 0 ? () => showPeople("owe") : undefined}
+            label={`Still to pay ${formatPaise(data.totalIOwe)}. Show who you owe`}
+            className="rounded-xl border border-border bg-surface p-4"
+          >
+            <p className="flex items-center gap-1 pr-5 text-sm text-muted-foreground">
               <TrendingDown className="h-4 w-4 text-coral-ink" aria-hidden="true" />
               Still to pay
             </p>
             <p className="tabular-currency mt-1 text-xl font-semibold text-coral-ink">
               {formatPaise(data.totalIOwe)}
             </p>
-          </div>
+          </SummaryCard>
         </div>
         <p className="text-xs text-muted-foreground">
           With each person, what you owe them and what they owe you are offset first, so you only see
@@ -150,7 +172,7 @@ export default function Balances() {
         </section>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      <div id="people-balances" tabIndex={-1} className="flex scroll-mt-20 flex-wrap gap-2 focus:outline-none">
         {(
           [
             ["all", "All"],

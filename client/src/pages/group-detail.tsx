@@ -87,6 +87,12 @@ export default function GroupDetail() {
   const isCreator = group.createdBy === user?.id;
   const memberUserIds = group.members.filter((m) => m.userId !== null).map((m) => m.userId!);
 
+  function goToSettleUp() {
+    const section = document.getElementById("settle-up");
+    section?.scrollIntoView({ behavior: "smooth", block: "start" });
+    section?.querySelector("h2")?.focus({ preventScroll: true });
+  }
+
   async function handleAddPerson(person: Person) {
     try {
       await addMember.mutateAsync(person.id);
@@ -143,7 +149,14 @@ export default function GroupDetail() {
         </DropdownMenu>
       </header>
 
-      {billsData && billsData.bills.length > 0 && <MoneySummary {...billsData.summary} />}
+      {billsData && billsData.bills.length > 0 && (
+        <MoneySummary
+          {...billsData.summary}
+          // Settle up only appears while someone owes something: only then do the cards lead there.
+          onOpen={group.debts.length > 0 ? goToSettleUp : undefined}
+          openLabel="Go to settle up"
+        />
+      )}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">

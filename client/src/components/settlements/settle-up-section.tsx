@@ -45,7 +45,7 @@ export function SettleUpSection({ group }: { group: GroupDetail }) {
   return (
     <section id="settle-up" className="space-y-3 scroll-mt-20">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Settle up</h2>
+        <h2 tabIndex={-1} className="text-lg font-semibold focus:outline-none">Settle up</h2>
         {group.debts.length > 1 && (
           <div role="group" aria-label="Debt view" className="flex rounded-lg border border-border p-0.5 text-sm">
             {(
