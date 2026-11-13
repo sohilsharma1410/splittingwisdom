@@ -20,6 +20,9 @@ export function BillCard({ bill }: { bill: GroupBillSummary }) {
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
         <span className="tabular-currency font-semibold">{formatPaise(bill.grandTotal)}</span>
+        <span className="text-xs text-muted-foreground">
+          Your share <span className="tabular-currency font-medium text-foreground">{formatPaise(bill.myShare)}</span>
+        </span>
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           {bill.status === "settled" ? (
             <>

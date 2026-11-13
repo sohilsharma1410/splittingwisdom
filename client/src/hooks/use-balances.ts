@@ -12,6 +12,10 @@ export interface BalancesSummary {
   netBalance: number;
   totalOwedToMe: number;
   totalIOwe: number;
+  /** The user's share of every bill in every group they're in. */
+  myShare: number;
+  /** The grand totals of the bills the user paid for (settlements not included). */
+  iPaid: number;
   unsettledCount: number;
   balances: BalanceSummaryItem[];
   /** Groups where "simplify debts" would cut the number of payments. */

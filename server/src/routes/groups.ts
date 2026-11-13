@@ -1,4 +1,5 @@
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
+import multer from "multer";
 import { eq, inArray, and, isNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
@@ -11,13 +12,19 @@ import {
   billGrandTotal,
   listDirectDebts,
   simplifyDebts,
+  summarizeMember,
+  groupExportFileSchema,
+  groupExportRequestSchema,
+  groupImportChoicesSchema,
 } from "@splittingwisdom/shared";
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireGroupMember } from "../middleware/authorize.js";
 import { idempotency } from "../middleware/idempotency.js";
-import { computeGroupBalances, memberNetBalance } from "../lib/group-balance.js";
+import { computeGroupBalances, memberNetBalance, toBillForSummary, toSettlementForBalance } from "../lib/group-balance.js";
 import { loadBillStatuses } from "../lib/bill-status.js";
+import { exportGroups, importGroups, ImportRejected } from "../lib/group-transfer.js";
+import { rateLimit } from "../middleware/rate-limit.js";
 import { isForeignKeyViolation, isUniqueViolation } from "../lib/pg-errors.js";
 
 const router = Router();
@@ -115,6 +122,98 @@ router.post("/", idempotency(), async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/groups/export?ids=1,2&receipts=true — download groups as one file
+// ---------------------------------------------------------------------------
+router.get("/export", rateLimit({ max: 30, windowMs: 60 * 60 * 1000, message: "Too many exports this hour. Try again later." }), async (req, res) => {
+  const parsed = groupExportRequestSchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: { message: parsed.error.issues[0].message } });
+    return;
+  }
+  const file = await exportGroups(req.session.userId!, parsed.data.ids, parsed.data.receipts);
+  if (!file) {
+    res.status(404).json({ error: { message: "One of those groups wasn't found." } });
+    return;
+  }
+  res.json({ data: file });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/groups/import — multipart: `file` (an export) and `you` (JSON array: for each group
+// in the file, the ref of the member who is the importer). Always creates new groups.
+// ---------------------------------------------------------------------------
+const MAX_IMPORT_BYTES = 100 * 1024 * 1024;
+const importUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_IMPORT_BYTES, files: 1 } });
+
+function handleImportUpload(req: Request, res: Response, next: NextFunction) {
+  importUpload.single("file")(req, res, (err: unknown) => {
+    if (!err) {
+      next();
+      return;
+    }
+    if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+      res.status(400).json({ error: { message: "The file must be under 100 MB." } });
+      return;
+    }
+    next(err);
+  });
+}
+
+router.post(
+  "/import",
+  rateLimit({ max: 10, windowMs: 60 * 60 * 1000, message: "Too many imports this hour. Try again later." }),
+  handleImportUpload,
+  idempotency(),
+  async (req, res) => {
+    if (!req.file) {
+      res.status(400).json({ error: { message: "Choose an export file to import." } });
+      return;
+    }
+    let json: unknown;
+    try {
+      json = JSON.parse(req.file.buffer.toString("utf8"));
+    } catch {
+      res.status(400).json({ error: { message: "That file isn't a SplittingWisdom export (it isn't valid JSON)." } });
+      return;
+    }
+    const file = groupExportFileSchema.safeParse(json);
+    if (!file.success) {
+      const issue = file.error.issues[0];
+      res.status(400).json({ error: { message: `The file can't be imported: ${issue.message}${issue.path.length ? ` (at ${issue.path.join(".")})` : ""}` } });
+      return;
+    }
+    let you: unknown;
+    try {
+      you = JSON.parse(String(req.body?.you ?? ""));
+    } catch {
+      you = null;
+    }
+    const choices = groupImportChoicesSchema.safeParse(you);
+    if (!choices.success) {
+      res.status(400).json({ error: { message: "Choose who you are in every group." } });
+      return;
+    }
+
+    const user = await db.query.users.findFirst({ where: eq(users.id, req.session.userId!) });
+    if (!user) {
+      res.status(401).json({ error: { message: "You need to be logged in." } });
+      return;
+    }
+
+    try {
+      const result = await importGroups(file.data, choices.data, { id: user.id, displayName: user.displayName });
+      res.status(201).json({ data: result });
+    } catch (err) {
+      if (err instanceof ImportRejected) {
+        res.status(400).json({ error: { message: err.message } });
+        return;
+      }
+      throw err;
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
 // GET /api/groups/:id — full detail
 // ---------------------------------------------------------------------------
 router.get("/:id", requireGroupMember("id"), async (req, res) => {
@@ -157,22 +256,33 @@ router.get("/:id", requireGroupMember("id"), async (req, res) => {
 // GET /api/groups/:id/bills — bills for this group, newest first
 // ---------------------------------------------------------------------------
 router.get("/:id/bills", requireGroupMember("id"), async (req, res) => {
-  const groupBills = await db.query.bills.findMany({
-    where: eq(bills.groupId, res.locals.groupId!),
-    with: { paidBy: true },
-    orderBy: (b, { desc }) => [desc(b.createdAt)],
-  });
+  const groupId = res.locals.groupId!;
+  const [groupBills, groupSettlements, statuses] = await Promise.all([
+    db.query.bills.findMany({
+      where: eq(bills.groupId, groupId),
+      with: { paidBy: true, items: { with: { assignments: true } } },
+      orderBy: (b, { desc }) => [desc(b.createdAt)],
+    }),
+    db.query.settlements.findMany({ where: eq(settlements.groupId, groupId) }),
+    loadBillStatuses([groupId]),
+  ]);
 
-  const statuses = await loadBillStatuses([res.locals.groupId!]);
+  const { billShares, ...summary } = summarizeMember(
+    groupBills.map(toBillForSummary),
+    groupSettlements.map(toSettlementForBalance),
+    res.locals.membership!.id,
+  );
 
   res.json({
     data: {
-      bills: groupBills.map((b) => ({
+      summary,
+      bills: groupBills.map((b, index) => ({
         id: b.id,
         description: b.description,
         merchant: b.merchant,
         billDate: b.billDate,
         grandTotal: billGrandTotal(b),
+        myShare: billShares[index],
         paidByName: b.paidBy.displayName,
         status: statuses.get(b.id) ?? "pending",
         createdAt: b.createdAt,

@@ -15,7 +15,7 @@ import {
 import { db } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { computeUserCounterpartyBalances } from "../lib/counterparty-balances.js";
-import { computeGroupBalances } from "../lib/group-balance.js";
+import { computeGroupBalances, computeMemberSummary } from "../lib/group-balance.js";
 import { parsePersonId, resolvePersonTargets } from "../lib/person.js";
 
 const router = Router();
@@ -40,10 +40,21 @@ async function findSimplifiableGroups(userId: number) {
   return perGroup.filter((g) => g.simplifiedCount < g.directCount).sort((a, b) => a.groupId - b.groupId);
 }
 
+/** The user's share and what they paid, summed over every group they're in. */
+async function sumMySpending(userId: number) {
+  const mine = await db.query.groupMembers.findMany({ where: eq(groupMembers.userId, userId) });
+  const summaries = await Promise.all(mine.map((m) => computeMemberSummary(m.groupId, m.id)));
+  return {
+    myShare: summaries.reduce((sum, s) => sum + s.share, 0),
+    iPaid: summaries.reduce((sum, s) => sum + s.paid, 0),
+  };
+}
+
 router.get("/", async (req, res) => {
-  const [balances, simplifiableGroups] = await Promise.all([
+  const [balances, simplifiableGroups, spending] = await Promise.all([
     computeUserCounterpartyBalances(req.session.userId!),
     findSimplifiableGroups(req.session.userId!),
+    sumMySpending(req.session.userId!),
   ]);
 
   const totalOwedToMe = balances.filter((b) => b.netAmount > 0).reduce((s, b) => s + b.netAmount, 0);
@@ -54,6 +65,7 @@ router.get("/", async (req, res) => {
       netBalance: totalOwedToMe - totalIOwe,
       totalOwedToMe,
       totalIOwe,
+      ...spending,
       unsettledCount: balances.filter((b) => b.netAmount !== 0).length,
       simplifiableGroups,
       balances: balances

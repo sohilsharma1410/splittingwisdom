@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdir, open, readdir, rename, rm, stat } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 /**
@@ -72,6 +72,10 @@ export async function writeReceiptFile(dir: string, receiptPath: string, data: B
     await rm(temp, { force: true });
     throw err;
   }
+}
+
+export async function readReceiptFile(dir: string, receiptPath: string): Promise<Buffer> {
+  return readFile(absolutePath(dir, receiptPath));
 }
 
 export async function deleteReceiptFile(dir: string, receiptPath: string): Promise<void> {

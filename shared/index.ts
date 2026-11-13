@@ -3,3 +3,4 @@ export * from "./lib/balance.js";
 export * from "./schema.js";
 export * from "./lib/settlement.js";
 export * from "./sync-schema.js";
+export * from "./group-export.js";

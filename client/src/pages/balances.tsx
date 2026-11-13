@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { SettleButton } from "@/components/settlements/settle-button";
 import { format } from "date-fns";
 import { Scale, TrendingUp, TrendingDown, CheckCircle2, Sparkles } from "lucide-react";
+import { MoneySummary } from "@/components/balances/money-summary";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -93,35 +94,40 @@ export default function Balances() {
     <div className="space-y-6">
       <header>
         <h1 className="text-3xl font-semibold">Balances</h1>
-        <p className="mt-1 text-muted-foreground">Who owes you, and who you owe.</p>
+        <p className="mt-1 text-muted-foreground">Your share, what you paid, and who still owes whom.</p>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-border bg-surface p-4">
-          <p className="text-sm text-muted-foreground">Net balance</p>
-          <p
-            className={cn(
-              "tabular-currency mt-1 text-2xl font-semibold",
-              data.netBalance > 0 && "text-success-ink",
-              data.netBalance < 0 && "text-coral-ink",
-            )}
-          >
-            {data.netBalance === 0 ? "Settled" : formatPaise(Math.abs(data.netBalance))}
-          </p>
+      <MoneySummary share={data.myShare} paid={data.iPaid} net={data.netBalance} />
+
+      <section aria-labelledby="still-to-settle" className="space-y-2">
+        <h2 id="still-to-settle" className="text-sm font-semibold">
+          Still to settle, person by person
+        </h2>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl border border-border bg-surface p-4">
+            <p className="flex items-center gap-1 text-sm text-muted-foreground">
+              <TrendingUp className="h-4 w-4 text-success-ink" aria-hidden="true" />
+              Still to get back
+            </p>
+            <p className="tabular-currency mt-1 text-xl font-semibold text-success-ink">
+              {formatPaise(data.totalOwedToMe)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-border bg-surface p-4">
+            <p className="flex items-center gap-1 text-sm text-muted-foreground">
+              <TrendingDown className="h-4 w-4 text-coral-ink" aria-hidden="true" />
+              Still to pay
+            </p>
+            <p className="tabular-currency mt-1 text-xl font-semibold text-coral-ink">
+              {formatPaise(data.totalIOwe)}
+            </p>
+          </div>
         </div>
-        <div className="rounded-xl border border-border bg-surface p-4">
-          <p className="text-sm text-muted-foreground">Owed to you</p>
-          <p className="tabular-currency mt-1 text-2xl font-semibold text-success-ink">
-            {formatPaise(data.totalOwedToMe)}
-          </p>
-        </div>
-        <div className="rounded-xl border border-border bg-surface p-4">
-          <p className="text-sm text-muted-foreground">You owe</p>
-          <p className="tabular-currency mt-1 text-2xl font-semibold text-coral-ink">
-            {formatPaise(data.totalIOwe)}
-          </p>
-        </div>
-      </div>
+        <p className="text-xs text-muted-foreground">
+          With each person, what you owe them and what they owe you are offset first, so you only see
+          the difference. Tap a person to see which bills it comes from.
+        </p>
+      </section>
 
       {data.simplifiableGroups.length > 0 && (
         <section className="space-y-2 rounded-xl border border-border bg-surface p-4" aria-label="Fewer payments possible">
@@ -144,12 +150,12 @@ export default function Balances() {
         </section>
       )}
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {(
           [
             ["all", "All"],
-            ["owed", "Owed to You"],
-            ["owe", "You Owe"],
+            ["owed", "They owe you"],
+            ["owe", "You owe them"],
           ] as const
         ).map(([value, label]) => (
           <Button

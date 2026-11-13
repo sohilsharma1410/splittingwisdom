@@ -194,3 +194,62 @@ export function getPairwiseBalance(
   if (!pair) return 0;
   return memberIdA < memberIdB ? pair.netAmount : -pair.netAmount;
 }
+
+/** A bill plus its grand total, for summing what a group spent. */
+export interface BillForSummary extends BillForBalance {
+  grandTotal: number;
+}
+
+/** One member's money in one group, every figure derived from the bills and settlements. */
+export interface MemberSummary {
+  /** Everything the group spent: the sum of every bill's grand total. */
+  groupSpent: number;
+  /** The part of groupSpent assigned to nobody, so it is in nobody's share. */
+  unassigned: number;
+  /** What this member had: their share of every bill, tax, tip, fees and discounts included. */
+  share: number;
+  /** The grand totals of the bills this member paid for. Settlements are not included. */
+  paid: number;
+  /** After settlements. Positive: the others owe this member overall. Negative: they owe the others. */
+  net: number;
+  /** This member's share of each bill, in the order the bills were given. */
+  billShares: number[];
+}
+
+/**
+ * Sums one member's position in a group. Shares come from computeBillBreakdown and the net from
+ * computeBalances, so these figures always agree with "who owes whom". With every item assigned
+ * and no settlements, net = paid - share exactly.
+ */
+export function summarizeMember(
+  bills: BillForSummary[],
+  settlements: SettlementForBalance[],
+  memberId: number,
+): MemberSummary {
+  let groupSpent = 0;
+  let unassigned = 0;
+  let paid = 0;
+  const billShares = bills.map((bill) => {
+    const rows = computeBillBreakdown(bill);
+    const assigned = rows.reduce((sum, row) => sum + row.total, 0);
+    groupSpent += bill.grandTotal;
+    unassigned += bill.grandTotal - assigned;
+    if (bill.paidByMemberId === memberId) paid += bill.grandTotal;
+    return rows.find((row) => row.memberId === memberId)?.total ?? 0;
+  });
+
+  let net = 0;
+  for (const pair of computeBalances(bills, settlements)) {
+    if (pair.memberIdA === memberId) net -= pair.netAmount;
+    else if (pair.memberIdB === memberId) net += pair.netAmount;
+  }
+
+  return {
+    groupSpent,
+    unassigned,
+    share: billShares.reduce((sum, share) => sum + share, 0),
+    paid,
+    net,
+    billShares,
+  };
+}

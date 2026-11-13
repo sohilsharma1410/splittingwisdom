@@ -1,27 +1,41 @@
 import { useState } from "react";
-import { Users } from "lucide-react";
+import { Download, Upload, Users } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { GroupCard } from "@/components/groups/group-card";
 import { CreateGroupDialog } from "@/components/groups/create-group-dialog";
+import { ExportGroupsDialog } from "@/components/groups/export-groups-dialog";
+import { ImportGroupsDialog } from "@/components/groups/import-groups-dialog";
 import { useGroups } from "@/hooks/use-groups";
 
 export default function Groups() {
   const [createOpen, setCreateOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const { data, isLoading, isError, refetch } = useGroups();
 
   return (
     <div className="space-y-6">
-      <header className="flex items-center justify-between gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold">Groups</h1>
           <p className="mt-1 text-muted-foreground">
             Trips, households, and shared projects, organized.
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>Create Group</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload className="h-4 w-4" aria-hidden="true" />
+            Import
+          </Button>
+          <Button variant="outline" onClick={() => setExportOpen(true)} disabled={!data || data.groups.length === 0}>
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Export
+          </Button>
+          <Button onClick={() => setCreateOpen(true)}>Create Group</Button>
+        </div>
       </header>
 
       {isLoading && (
@@ -52,6 +66,12 @@ export default function Groups() {
       )}
 
       <CreateGroupDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <ExportGroupsDialog groups={data?.groups ?? []} open={exportOpen} onOpenChange={setExportOpen} />
+      <ImportGroupsDialog
+        existingGroupNames={(data?.groups ?? []).map((g) => g.name)}
+        open={importOpen}
+        onOpenChange={setImportOpen}
+      />
     </div>
   );
 }

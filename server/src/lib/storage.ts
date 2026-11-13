@@ -4,6 +4,7 @@ import {
   createReceiptToken,
   deleteReceiptFile,
   listReceiptFiles,
+  readReceiptFile,
   writeReceiptFile,
 } from "./storage-local.js";
 
@@ -105,6 +106,19 @@ export async function getReceiptSignedUrl(path: string): Promise<string> {
     .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
   if (error) throw error;
   return data.signedUrl;
+}
+
+/** Reads a stored receipt image back, with its type taken from the file extension. */
+export async function readReceiptImage(path: string): Promise<{ buffer: Buffer; mimeType: string }> {
+  const extension = path.split(".").pop() ?? "";
+  const mimeType = Object.entries(EXTENSION_BY_MIME_TYPE).find(([, ext]) => ext === extension)?.[0];
+  if (!mimeType) throw new Error(`Unknown receipt image type for ${path}`);
+
+  if (storageDriver() === "local") return { buffer: await readReceiptFile(receiptsDir(), path), mimeType };
+
+  const { data, error } = await getSupabaseClient().storage.from(RECEIPTS_BUCKET).download(path);
+  if (error) throw error;
+  return { buffer: Buffer.from(await data.arrayBuffer()), mimeType };
 }
 
 export async function deleteReceiptImage(path: string): Promise<void> {

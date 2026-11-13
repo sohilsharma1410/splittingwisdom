@@ -5,7 +5,11 @@ import {
   settlements,
   computeBalances,
   getPairwiseBalance,
+  summarizeMember,
+  billGrandTotal,
   type BillForBalance,
+  type BillForSummary,
+  type MemberSummary,
   type SettlementForBalance,
   type PairwiseBalance,
 } from "@splittingwisdom/shared";
@@ -45,6 +49,11 @@ export function toBillForBalance(b: {
       })),
     })),
   };
+}
+
+/** A loaded bill with its grand total, for the per-member money summary. */
+export function toBillForSummary(b: Parameters<typeof toBillForBalance>[0] & { subtotalAmount: number }): BillForSummary {
+  return { ...toBillForBalance(b), grandTotal: billGrandTotal(b) };
 }
 
 export function toSettlementForBalance(s: {
@@ -90,4 +99,20 @@ export function memberNetBalance(pairwise: PairwiseBalance[], memberId: number, 
     if (otherId === memberId) return sum;
     return sum + getPairwiseBalance(pairwise, otherId, memberId);
   }, 0);
+}
+
+/** One member's money in a group: what the group spent, their share, what they paid, their net. */
+export async function computeMemberSummary(
+  groupId: number,
+  memberId: number,
+  executor: QueryExecutor = db,
+): Promise<MemberSummary> {
+  const [groupBills, groupSettlements] = await Promise.all([
+    executor.query.bills.findMany({
+      where: eq(bills.groupId, groupId),
+      with: { items: { with: { assignments: true } } },
+    }),
+    executor.query.settlements.findMany({ where: eq(settlements.groupId, groupId) }),
+  ]);
+  return summarizeMember(groupBills.map(toBillForSummary), groupSettlements.map(toSettlementForBalance), memberId);
 }

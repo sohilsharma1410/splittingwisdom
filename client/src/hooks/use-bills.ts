@@ -10,9 +10,23 @@ export interface GroupBillSummary {
   merchant: string | null;
   billDate: string;
   grandTotal: number;
+  /** The viewer's share of this bill, tax and tip included. 0 when they had nothing on it. */
+  myShare: number;
   paidByName: string;
   status: "pending" | "settled";
   createdAt: string;
+}
+
+/** The viewer's money in one group (server: summarizeMember). */
+export interface GroupMoneySummary {
+  groupSpent: number;
+  /** Part of groupSpent assigned to nobody yet. */
+  unassigned: number;
+  share: number;
+  /** Bills the viewer paid for; settlements not included. */
+  paid: number;
+  /** After settlements. Positive: the others owe the viewer. */
+  net: number;
 }
 
 export interface BillShareBreakdown {
@@ -140,7 +154,7 @@ export function useActivity() {
 export function useGroupBills(groupId: number) {
   return useQuery({
     queryKey: ["groups", groupId, "bills"],
-    queryFn: () => apiFetch<{ bills: GroupBillSummary[] }>(`/api/groups/${groupId}/bills`),
+    queryFn: () => apiFetch<{ summary: GroupMoneySummary; bills: GroupBillSummary[] }>(`/api/groups/${groupId}/bills`),
     enabled: Number.isInteger(groupId),
   });
 }

@@ -3,6 +3,8 @@ import {
   computeBalances,
   computeItemShares,
   getPairwiseBalance,
+  summarizeMember,
+  type BillForSummary,
   type BillForBalance,
   type BillItemForBalance,
 } from "./balance.js";
@@ -419,5 +421,51 @@ describe("property: sum of shares always equals the bill's grand total (fully-as
 
       expect(payerOwnShare + owedToPayer).toBe(grandTotal);
     }
+  });
+});
+
+describe("summarizeMember — one person's money in a group", () => {
+  const charges = { taxAmount: 0, tipAmount: 0, serviceFeeAmount: 0, discountAmount: 0 };
+  // Alice pays ₹1,200 for dinner split three ways; Bob pays ₹900 for the movie split three ways.
+  const dinner: BillForSummary = { ...charges, paidByMemberId: 1, grandTotal: 120000, items: [{ price: 120000, assignments: equalAssignments([1, 2, 3]) }] };
+  const movie: BillForSummary = { ...charges, paidByMemberId: 2, grandTotal: 90000, items: [{ price: 90000, assignments: equalAssignments([1, 2, 3]) }] };
+
+  it("shows Alice's share, what she paid and her net, which is paid minus share", () => {
+    expect(summarizeMember([dinner, movie], [], 1)).toEqual({
+      groupSpent: 210000,
+      unassigned: 0,
+      share: 70000,
+      paid: 120000,
+      net: 50000,
+      billShares: [40000, 30000],
+    });
+  });
+
+  it("counts a member who paid nothing and had no items as zero, not missing", () => {
+    expect(summarizeMember([dinner], [], 4)).toMatchObject({ share: 0, paid: 0, net: 0, billShares: [0] });
+  });
+
+  it("includes tax, tip and discounts in the share, with remainders adding up to the bill", () => {
+    const taxed: BillForSummary = { paidByMemberId: 1, taxAmount: 100, tipAmount: 0, serviceFeeAmount: 0, discountAmount: 1, grandTotal: 199, items: [{ price: 100, assignments: equalAssignments([1, 2, 3]) }] };
+    const shares = [1, 2, 3].map((id) => summarizeMember([taxed], [], id).share);
+    expect(shares.reduce((a, b) => a + b, 0)).toBe(199);
+  });
+
+  it("takes settlements into the net but never into what was paid", () => {
+    const settled = summarizeMember([dinner, movie], [{ payerMemberId: 3, recipientMemberId: 1, amount: 40000 }], 1);
+    expect(settled).toMatchObject({ paid: 120000, share: 70000, net: 10000 });
+  });
+
+  it("reports unassigned items separately, and they are nobody's share", () => {
+    const partly: BillForSummary = { ...charges, paidByMemberId: 1, grandTotal: 50000, items: [{ price: 30000, assignments: equalAssignments([1, 2]) }, { price: 20000, assignments: [] }] };
+    expect(summarizeMember([partly], [], 1)).toMatchObject({ groupSpent: 50000, unassigned: 20000, share: 15000, paid: 50000, net: 15000 });
+  });
+
+  it("everyone's net adds to zero, and with nothing settled or unassigned net = paid - share", () => {
+    const people = [1, 2, 3];
+    const nets = people.map((id) => summarizeMember([dinner, movie], [], id));
+    expect(nets.reduce((sum, s) => sum + s.net, 0)).toBe(0);
+    for (const s of nets) expect(s.net).toBe(s.paid - s.share);
+    expect(nets.reduce((sum, s) => sum + s.share, 0)).toBe(nets[0].groupSpent);
   });
 });

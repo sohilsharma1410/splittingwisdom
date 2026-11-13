@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { useParams } from "wouter";
-import { MoreVertical, Pencil, Trash2, X, Receipt, Plus } from "lucide-react";
+import { MoreVertical, Pencil, Trash2, X, Receipt, Plus, Search, Download } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { MoneySummary } from "@/components/balances/money-summary";
+import { filterAndSortBills, type BillSort } from "@/lib/bill-list";
 import { BackButton } from "@/components/ui/back-button";
 import {
   DropdownMenu,
@@ -16,6 +19,7 @@ import { InitialsAvatar } from "@/components/ui/avatar";
 import { InviteLinkCard } from "@/components/groups/invite-link-card";
 import { RenameGroupDialog } from "@/components/groups/rename-group-dialog";
 import { DeleteGroupAlert } from "@/components/groups/delete-group-alert";
+import { ExportGroupsDialog } from "@/components/groups/export-groups-dialog";
 import { RemoveMemberAlert } from "@/components/groups/remove-member-alert";
 import { BillFormDialog } from "@/components/bills/bill-form-dialog";
 import { BillCard } from "@/components/bills/bill-card";
@@ -29,6 +33,16 @@ import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/query-client";
 import { formatPaise } from "@splittingwisdom/shared";
 
+const SORT_KEY = "billSort";
+
+function readSavedSort(): BillSort {
+  try {
+    return localStorage.getItem(SORT_KEY) === "billDate" ? "billDate" : "added";
+  } catch {
+    return "added";
+  }
+}
+
 export default function GroupDetail() {
   const { id } = useParams<{ id: string }>();
   const groupId = Number(id);
@@ -41,8 +55,20 @@ export default function GroupDetail() {
 
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [newBillOpen, setNewBillOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<GroupMemberDetail | null>(null);
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<BillSort>(readSavedSort);
+
+  function changeSort(next: BillSort) {
+    setSort(next);
+    try {
+      localStorage.setItem(SORT_KEY, next);
+    } catch {
+      // Storage blocked: the choice just isn't remembered.
+    }
+  }
 
   if (isLoading) {
     return (
@@ -101,6 +127,12 @@ export default function GroupDetail() {
               <Pencil className="h-4 w-4" aria-hidden="true" />
               Rename group
             </DropdownMenuItem>
+            {!group.isPersonal && (
+              <DropdownMenuItem onSelect={() => setExportOpen(true)}>
+                <Download className="h-4 w-4" aria-hidden="true" />
+                Export group
+              </DropdownMenuItem>
+            )}
             {isCreator && (
               <DropdownMenuItem onSelect={() => setDeleteOpen(true)} className="text-coral-ink">
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -110,6 +142,8 @@ export default function GroupDetail() {
           </DropdownMenuContent>
         </DropdownMenu>
       </header>
+
+      {billsData && billsData.bills.length > 0 && <MoneySummary {...billsData.summary} />}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
@@ -137,11 +171,75 @@ export default function GroupDetail() {
         )}
 
         {!billsLoading && billsData && billsData.bills.length > 0 && (
-          <div className="space-y-2">
-            {billsData.bills.map((bill) => (
-              <BillCard key={bill.id} bill={bill} />
-            ))}
-          </div>
+          <>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by bill name or merchant"
+                  aria-label="Search bills by name or merchant"
+                  className="pl-9 pr-9"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    aria-label="Clear search"
+                    className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+              <div role="group" aria-label="Sort bills" className="flex shrink-0 items-center gap-2">
+                <span className="text-sm text-muted-foreground">Newest by</span>
+                {(
+                  [
+                    ["added", "Date added"],
+                    ["billDate", "Bill date"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Button
+                    key={value}
+                    size="sm"
+                    variant={sort === value ? "default" : "outline"}
+                    aria-pressed={sort === value}
+                    onClick={() => changeSort(value)}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {(() => {
+              const shown = filterAndSortBills(billsData.bills, search, sort);
+              if (shown.length === 0) {
+                return (
+                  <EmptyState
+                    icon={Search}
+                    heading="No bills match"
+                    description={`Nothing in this group's bill names or merchants matches "${search.trim()}".`}
+                    action={
+                      <Button variant="outline" onClick={() => setSearch("")}>
+                        Clear search
+                      </Button>
+                    }
+                  />
+                );
+              }
+              return (
+                <div className="space-y-2">
+                  {shown.map((bill) => (
+                    <BillCard key={bill.id} bill={bill} />
+                  ))}
+                </div>
+              );
+            })()}
+          </>
         )}
       </section>
 
@@ -199,6 +297,12 @@ export default function GroupDetail() {
 
       <BillFormDialog open={newBillOpen} onOpenChange={setNewBillOpen} lockedGroupId={group.id} />
 
+      <ExportGroupsDialog
+        groups={[{ id: group.id, name: group.name }]}
+        preselected={[group.id]}
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+      />
       <RenameGroupDialog
         groupId={group.id}
         currentName={group.name}

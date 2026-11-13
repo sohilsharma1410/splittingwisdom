@@ -17,3 +17,6 @@ playwright-report/
 
 # Python
 __pycache__/
+
+# Database backups pulled from the Pi: real people's data, never commit
+Local_Backup/

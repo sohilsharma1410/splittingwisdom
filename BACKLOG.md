@@ -34,3 +34,7 @@ Bill Settled/Pending is now derived from bills + settlements (`shared/lib/settle
 
 Paying a simplified suggestion is now recorded as the chain of real debts it stands for, so chains leave nothing behind. A loop of debts that nets to zero (Ann owes Bob, Bob owes Cat, Cat owes Ann) still shows in the Direct tab, with the Simplified tab saying "everyone is settled overall". Consider an explicit "clear offsetting debts" action that records the loop as settlements, once real groups show it matters.
 - Language model for "assign by voice" too (D22 only covers spoken bills). Ask it only when the rules leave items unassigned, and keep the rules' refusals (negation, unsure, "paid"). Needs its own test sentences first, like `speech-split.eval-data.ts`.
+
+## Change-log tables grow forever on the Pi
+
+On 13 Nov 2026 the Pi had 15,379 rows in `sync_outbox` and 7,199 in `deletion_log`, against 58 bills. Triggers on every synced table append to them for the Supabase standby sync (plan workstream S), but no `SYNC_TARGET_DATABASE_URL` is set, so nothing is ever shipped or pruned. Harmless for now (a few MB), but it grows with every edit. Decide whether the standby sync is coming back: if not, drop the triggers and tables in a migration; if so, prune shipped rows and old deletion entries on a schedule.
