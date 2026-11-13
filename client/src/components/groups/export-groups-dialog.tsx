@@ -3,7 +3,7 @@ import { Download, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useExportGroups } from "@/hooks/use-group-transfer";
+import { useExportGroups, type ExportFormat } from "@/hooks/use-group-transfer";
 import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/query-client";
 
@@ -21,6 +21,7 @@ export function ExportGroupsDialog({
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [includeReceipts, setIncludeReceipts] = useState(false);
+  const [format, setFormat] = useState<ExportFormat>("json");
   const [error, setError] = useState<string | null>(null);
   const exportGroups = useExportGroups();
   const { toast } = useToast();
@@ -38,7 +39,7 @@ export function ExportGroupsDialog({
     setError(null);
     const groupIds = groups.map((g) => g.id).filter((id) => selected.has(id));
     try {
-      const file = await exportGroups.mutateAsync({ groupIds, includeReceipts });
+      const file = await exportGroups.mutateAsync({ groupIds, includeReceipts, format });
       const bills = file.groups.reduce((sum, g) => sum + g.bills.length, 0);
       toast({
         title: `Exported ${file.groups.length} group${file.groups.length === 1 ? "" : "s"}, ${bills} bill${bills === 1 ? "" : "s"}`,
@@ -58,6 +59,7 @@ export function ExportGroupsDialog({
         if (next) {
           setSelected(new Set(preselected ?? groups.map((g) => g.id)));
           setIncludeReceipts(false);
+          setFormat("json");
           setError(null);
         }
         onOpenChange(next);
@@ -67,8 +69,7 @@ export function ExportGroupsDialog({
         <DialogHeader>
           <DialogTitle>Export groups</DialogTitle>
           <DialogDescription>
-            Saves the groups, their members, bills, splits and settlements to one file. Import it later to get
-            them back as new groups.
+            Saves the groups, their members, bills, splits and settlements to one file.
           </DialogDescription>
         </DialogHeader>
 
@@ -84,13 +85,43 @@ export function ExportGroupsDialog({
           </div>
         </fieldset>
 
-        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border px-3 py-3">
-          <Checkbox className="mt-0.5" checked={includeReceipts} onCheckedChange={(on) => setIncludeReceipts(on === true)} />
-          <span className="text-sm">
-            Include receipt photos
-            <span className="block text-xs text-muted-foreground">Makes the file much bigger: about 1 MB per photo.</span>
-          </span>
-        </label>
+        <fieldset className="space-y-2">
+          <legend className="mb-2 text-sm font-medium">Format</legend>
+          {(
+            [
+              ["json", "Backup file (.json)", "Can be imported back into the app."],
+              ["csv", "Spreadsheet (.csv)", "Opens in Excel or Google Sheets, to read, sort and filter. Can't be imported back."],
+            ] as const
+          ).map(([value, label, hint]) => (
+            <label
+              key={value}
+              className="flex cursor-pointer items-start gap-3 rounded-lg border border-border px-3 py-3 has-[:checked]:border-mint has-[:checked]:bg-mint/10"
+            >
+              <input
+                type="radio"
+                name="export-format"
+                value={value}
+                checked={format === value}
+                onChange={() => setFormat(value)}
+                className="mt-0.5 h-4 w-4 accent-[var(--mint-ink)]"
+              />
+              <span className="text-sm">
+                {label}
+                <span className="block text-xs text-muted-foreground">{hint}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+
+        {format === "json" && (
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border px-3 py-3">
+            <Checkbox className="mt-0.5" checked={includeReceipts} onCheckedChange={(on) => setIncludeReceipts(on === true)} />
+            <span className="text-sm">
+              Include receipt photos
+              <span className="block text-xs text-muted-foreground">Makes the file much bigger: about 1 MB per photo.</span>
+            </span>
+          </label>
+        )}
 
         {error && (
           <p role="alert" className="text-sm text-coral-ink">

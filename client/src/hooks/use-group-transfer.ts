@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { groupExportFileSchema, type GroupExportFile } from "@splittingwisdom/shared";
 import { apiFetch } from "@/lib/query-client";
+import { groupExportToCsv } from "@/lib/export-csv";
 
 /** Saves text as a file through the browser's download. */
-function saveFile(text: string, fileName: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+function saveFile(text: string, fileName: string, type: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
   const link = document.createElement("a");
   link.href = url;
   link.download = fileName;
@@ -14,20 +15,23 @@ function saveFile(text: string, fileName: string) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-function fileNameFor(file: GroupExportFile): string {
+export type ExportFormat = "json" | "csv";
+
+function fileNameFor(file: GroupExportFile, extension: ExportFormat): string {
   const date = file.exportedAt.slice(0, 10);
-  if (file.groups.length > 1) return `splittingwisdom-${file.groups.length}-groups-${date}.json`;
+  if (file.groups.length > 1) return `splittingwisdom-${file.groups.length}-groups-${date}.${extension}`;
   const slug = file.groups[0].name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "group";
-  return `splittingwisdom-${slug}-${date}.json`;
+  return `splittingwisdom-${slug}-${date}.${extension}`;
 }
 
 export function useExportGroups() {
   return useMutation({
-    mutationFn: async ({ groupIds, includeReceipts }: { groupIds: number[]; includeReceipts: boolean }) => {
-      const file = await apiFetch<GroupExportFile>(
-        `/api/groups/export?ids=${groupIds.join(",")}&receipts=${includeReceipts}`,
-      );
-      saveFile(JSON.stringify(file, null, 1), fileNameFor(file));
+    mutationFn: async ({ groupIds, includeReceipts, format }: { groupIds: number[]; includeReceipts: boolean; format: ExportFormat }) => {
+      // A spreadsheet never carries photos, so don't fetch them for one.
+      const receipts = format === "json" && includeReceipts;
+      const file = await apiFetch<GroupExportFile>(`/api/groups/export?ids=${groupIds.join(",")}&receipts=${receipts}`);
+      if (format === "csv") saveFile(groupExportToCsv(file), fileNameFor(file, "csv"), "text/csv;charset=utf-8");
+      else saveFile(JSON.stringify(file, null, 1), fileNameFor(file, "json"), "application/json");
       return file;
     },
   });
